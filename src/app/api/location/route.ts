@@ -2,12 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { authenticateDevice } from "@/lib/device-auth";
-import { correctElevation } from "@/lib/elevation";
+import { computeElevationGain, correctElevationBatch } from "@/lib/elevation";
 import { haversineMeters } from "@/lib/geo";
 import { broadcast, PUBLIC_LIVE_CHANNEL, trackChannel } from "@/lib/realtime";
 
 const MAX_ACCURACY_M = 50;
-const ELEVATION_GAIN_THRESHOLD_M = 3;
 
 const bodySchema = z.object({
   sessionId: z.string().uuid(),
@@ -122,33 +121,25 @@ export async function POST(request: Request) {
 
   const { data: lastStored } = await admin
     .from("track_points")
-    .select("lat, lng, altitude_corrected, recorded_at")
+    .select("lat, lng, recorded_at")
     .eq("session_id", session.id)
     .order("recorded_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
+  const corrected = await correctElevationBatch(
+    usable.map((p) => ({ lat: p.lat, lng: p.lng, altitudeRaw: p.altitude }))
+  );
+
   let prevLat = lastStored?.lat ?? null;
   let prevLng = lastStored?.lng ?? null;
-  let prevElev = lastStored?.altitude_corrected ?? null;
   let addedDistance = 0;
-  let addedGain = 0;
 
   const rows = [];
-  for (const p of usable) {
-    const corrected = await correctElevation({
-      lat: p.lat,
-      lng: p.lng,
-      altitudeRaw: p.altitude,
-    });
-    const elev = corrected?.elevationMeters ?? null;
-
+  for (let i = 0; i < usable.length; i++) {
+    const p = usable[i]!;
     if (prevLat !== null && prevLng !== null) {
       addedDistance += haversineMeters(prevLat, prevLng, p.lat, p.lng);
-    }
-    if (prevElev !== null && elev !== null) {
-      const delta = elev - prevElev;
-      if (delta > ELEVATION_GAIN_THRESHOLD_M) addedGain += delta;
     }
 
     rows.push({
@@ -156,7 +147,7 @@ export async function POST(request: Request) {
       lat: p.lat,
       lng: p.lng,
       altitude_raw: p.altitude ?? null,
-      altitude_corrected: elev,
+      altitude_corrected: corrected[i]?.elevationMeters ?? null,
       accuracy: p.accuracy ?? null,
       speed: p.speed ?? null,
       heading: p.heading ?? null,
@@ -165,7 +156,6 @@ export async function POST(request: Request) {
 
     prevLat = p.lat;
     prevLng = p.lng;
-    if (elev !== null) prevElev = elev;
   }
 
   const { error: insertError } = await admin.from("track_points").insert(rows);
@@ -173,10 +163,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not store points" }, { status: 500 });
   }
 
+  // Gain is recomputed over the whole stored series each flush. Incremental
+  // per-batch deltas can't do hysteresis across batch boundaries, which is
+  // exactly where gradual climbs get lost.
+  const { data: elevRows } = await admin
+    .from("track_points")
+    .select("altitude_corrected")
+    .eq("session_id", session.id)
+    .order("recorded_at", { ascending: true })
+    .limit(20000);
+  const elevationGainMeters = computeElevationGain(
+    (elevRows ?? [])
+      .map((r) => r.altitude_corrected)
+      .filter((e): e is number => e !== null)
+  );
+
   const last = usable[usable.length - 1]!;
   const lastRow = rows[rows.length - 1]!;
   const distanceMeters = session.distance_meters + addedDistance;
-  const elevationGainMeters = session.elevation_gain_meters + addedGain;
   const durationSeconds = session.started_at
     ? Math.max(
         0,

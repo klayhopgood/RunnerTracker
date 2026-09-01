@@ -173,6 +173,73 @@ try {
     "stopped session leaves live feed",
     !(liveAfter.body.sessions ?? []).some((s) => s.sessionId === sessionId)
   );
+
+  // 10. Hilly run — elevation gain must accumulate across flush batches.
+  // Route climbs Mt Coot-tha (~30 m → ~280 m); DEM data gives real gain, and
+  // rising raw altitudes cover the fallback path if the DEM API is down.
+  const [hilly] = await sb("/rest/v1/sessions", {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId,
+      slug: `e2e-hilly-${Date.now().toString(36)}`,
+      display_name: "E2E Hilly Run",
+      visibility: "public",
+      countdown_seconds: 0,
+    }),
+  });
+  const hillyStart = await app(`/api/sessions/${hilly.id}/start`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
+  check("start hilly session", hillyStart.status === 200, JSON.stringify(hillyStart.body));
+
+  const ht0 = Date.now() - 20 * 60000;
+  const from = { lat: -27.4849, lng: 152.9735, alt: 30 };
+  const to = { lat: -27.4653, lng: 152.9542, alt: 280 };
+  const hillyPoints = Array.from({ length: 30 }, (_, i) => {
+    const f = i / 29;
+    return {
+      lat: from.lat + (to.lat - from.lat) * f,
+      lng: from.lng + (to.lng - from.lng) * f,
+      altitude: from.alt + (to.alt - from.alt) * f,
+      accuracy: 8,
+      speed: 2.5,
+      heading: 320,
+      recordedAt: new Date(ht0 + i * 30000).toISOString(),
+    };
+  });
+
+  const deviceHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${deviceToken}`,
+  };
+  const h1 = await app("/api/location", {
+    method: "POST",
+    headers: deviceHeaders,
+    body: JSON.stringify({ sessionId: hilly.id, points: hillyPoints.slice(0, 15) }),
+  });
+  const h2 = await app("/api/location", {
+    method: "POST",
+    headers: deviceHeaders,
+    body: JSON.stringify({ sessionId: hilly.id, points: hillyPoints.slice(15) }),
+  });
+  check("hilly ingest (two batches)", h1.status === 200 && h2.status === 200);
+  check(
+    "elevation gain accumulates",
+    (h2.body.elevationGainMeters ?? 0) > 20,
+    `gain=${Math.round(h2.body.elevationGainMeters ?? 0)}m`
+  );
+
+  const htrail = await app(`/api/track/${hilly.slug}/trail`);
+  check(
+    "trail carries corrected elevations",
+    (htrail.body.coordinates ?? []).some((c) => c[2] > 0)
+  );
+
+  await app(`/api/sessions/${hilly.id}/stop`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
 } catch (error) {
   if (!error.keepEarlyExit) check("unexpected error", false, error.message);
 } finally {

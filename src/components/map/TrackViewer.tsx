@@ -14,6 +14,7 @@ import {
 } from "@/lib/format";
 import { useUnits } from "@/lib/units";
 import { UnitsToggle } from "@/components/layout/UnitsToggle";
+import { ElevationProfile } from "./ElevationProfile";
 
 type SessionDetail = {
   id: string;
@@ -36,6 +37,7 @@ export function TrackViewer({ slug }: { slug: string }) {
   const markerRef = useRef<Marker | null>(null);
   const coordsRef = useRef<[number, number][]>([]);
   const [session, setSession] = useState<SessionDetail | null>(null);
+  const [profile, setProfile] = useState<Array<[number, number, number]>>([]);
   const [notFound, setNotFound] = useState(false);
   const [needsPassword, setNeedsPassword] = useState(false);
   const [password, setPassword] = useState("");
@@ -107,6 +109,7 @@ export function TrackViewer({ slug }: { slug: string }) {
         coordinates: [number, number, number][];
       };
       coordsRef.current = (coordinates ?? []).map(([lng, lat]) => [lng, lat]);
+      setProfile(coordinates ?? []);
       renderTrail();
 
       const last = coordsRef.current[coordsRef.current.length - 1];
@@ -158,6 +161,9 @@ export function TrackViewer({ slug }: { slug: string }) {
       .on("broadcast", { event: "location_update" }, ({ payload }) => {
         const update = payload as LocationBroadcast;
         coordsRef.current.push([update.lng, update.lat]);
+        if (typeof update.elevation === "number") {
+          setProfile((cur) => [...cur, [update.lng, update.lat, update.elevation as number]]);
+        }
         renderTrail();
         moveMarker(update.lng, update.lat);
         mapRef.current?.easeTo({ center: [update.lng, update.lat] });
@@ -290,6 +296,11 @@ export function TrackViewer({ slug }: { slug: string }) {
               </dt>
             </div>
           </dl>
+          {profile.length >= 2 && (
+            <div className="mt-3">
+              <ElevationProfile points={profile} units={units} />
+            </div>
+          )}
         </div>
       )}
     </>

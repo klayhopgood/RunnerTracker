@@ -33,7 +33,13 @@ type Stats = {
   durationSeconds: number;
 };
 
-type Screen = "loading" | "pair" | "sessions" | "run";
+type FinishedRun = {
+  name: string;
+  slug: string;
+  stats: Stats;
+};
+
+type Screen = "loading" | "pair" | "sessions" | "run" | "done";
 
 export default function TrackerPage() {
   const [units] = useUnits();
@@ -53,12 +59,37 @@ export default function TrackerPage() {
   const [countdownLeft, setCountdownLeft] = useState<number | null>(null);
   const [stats, setStats] = useState<Stats>({ distanceMeters: 0, durationSeconds: 0 });
   const [gpsStatus, setGpsStatus] = useState("Waiting for GPS…");
+  const [finished, setFinished] = useState<FinishedRun | null>(null);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
 
   const tokenRef = useRef<string | null>(null);
   const bufferRef = useRef<PendingPoint[]>([]);
   const watchIdRef = useRef<number | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flushingRef = useRef(false);
   const sessionRef = useRef<TrackerSession | null>(null);
+  const statsRef = useRef<Stats>({ distanceMeters: 0, durationSeconds: 0 });
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+  const acquireWakeLock = useCallback(async () => {
+    if (!("wakeLock" in navigator)) return;
+    try {
+      const sentinel = await navigator.wakeLock.request("screen");
+      wakeLockRef.current = sentinel;
+      setWakeLockActive(true);
+      sentinel.addEventListener("release", () => {
+        if (wakeLockRef.current === sentinel) setWakeLockActive(false);
+      });
+    } catch {
+      setWakeLockActive(false);
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    wakeLockRef.current?.release().catch(() => {});
+    wakeLockRef.current = null;
+    setWakeLockActive(false);
+  }, []);
 
   const loadSessions = useCallback(async () => {
     const token = tokenRef.current;
@@ -145,46 +176,84 @@ export default function TrackerPage() {
       flushTimerRef.current = null;
     }
     bufferRef.current = [];
-  }, []);
+    releaseWakeLock();
+  }, [releaseWakeLock]);
+
+  const finishRun = useCallback(
+    (session: TrackerSession) => {
+      setFinished({
+        name: session.display_name,
+        slug: session.slug,
+        stats: { ...statsRef.current },
+      });
+      setActiveSession(null);
+      sessionRef.current = null;
+      setScreen("done");
+    },
+    []
+  );
 
   const flushBuffer = useCallback(async () => {
-    const token = tokenRef.current;
-    const session = sessionRef.current;
-    if (!token || !session || bufferRef.current.length === 0) return;
-
-    const points = bufferRef.current.splice(0, 50);
+    // The interval and the visibilitychange handler can both fire this;
+    // don't let two drains interleave.
+    if (flushingRef.current) return;
+    flushingRef.current = true;
     try {
-      const res = await fetch("/api/location", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ sessionId: session.id, points }),
-      });
-      const data = await res.json();
-      if (data.status === "countdown") {
-        setCountdownLeft(data.secondsRemaining);
-      } else if (data.status === "live") {
-        setCountdownLeft(null);
-        if (typeof data.distanceMeters === "number") {
-          setStats({
-            distanceMeters: data.distanceMeters,
-            durationSeconds: data.durationSeconds,
+      // Drain everything, not just one batch — after the tab was backgrounded
+      // the buffer may hold far more than 50 points.
+      while (bufferRef.current.length > 0) {
+        const token = tokenRef.current;
+        const session = sessionRef.current;
+        if (!token || !session) return;
+
+        const points = bufferRef.current.splice(0, 50);
+        let data: {
+          status?: string;
+          secondsRemaining?: number;
+          distanceMeters?: number;
+          durationSeconds?: number;
+        };
+        try {
+          const res = await fetch("/api/location", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ sessionId: session.id, points }),
           });
+          data = await res.json();
+        } catch {
+          // Network failure: put the points back so nothing is lost, retry next tick.
+          bufferRef.current.unshift(...points);
+          return;
         }
-      } else if (data.status === "stopped") {
-        stopTracking();
-        setActiveSession(null);
-        sessionRef.current = null;
-        await loadSessions();
+
+        if (data.status === "countdown") {
+          setCountdownLeft(data.secondsRemaining ?? null);
+          return;
+        }
+        if (data.status === "live") {
+          setCountdownLeft(null);
+          if (typeof data.distanceMeters === "number") {
+            const next = {
+              distanceMeters: data.distanceMeters,
+              durationSeconds: data.durationSeconds ?? 0,
+            };
+            statsRef.current = next;
+            setStats(next);
+          }
+        } else if (data.status === "stopped") {
+          // Stopped server-side (auto-stop or from the dashboard).
+          stopTracking();
+          finishRun(session);
+          return;
+        }
       }
-    } catch {
-      // Keep points buffered on network failure; splice already removed them —
-      // put them back at the front so nothing is lost.
-      bufferRef.current.unshift(...points);
+    } finally {
+      flushingRef.current = false;
     }
-  }, [loadSessions, stopTracking]);
+  }, [finishRun, stopTracking]);
 
   const beginTracking = useCallback(
     (session: TrackerSession) => {
@@ -192,6 +261,8 @@ export default function TrackerPage() {
       setActiveSession(session);
       setScreen("run");
       setStats({ distanceMeters: 0, durationSeconds: 0 });
+      statsRef.current = { distanceMeters: 0, durationSeconds: 0 };
+      acquireWakeLock();
 
       if (!("geolocation" in navigator)) {
         setGpsStatus("This device has no GPS support");
@@ -216,8 +287,21 @@ export default function TrackerPage() {
       );
       flushTimerRef.current = setInterval(flushBuffer, FLUSH_INTERVAL_MS);
     },
-    [flushBuffer]
+    [acquireWakeLock, flushBuffer]
   );
+
+  // Wake locks are auto-released when the tab is backgrounded; re-acquire on
+  // return and immediately drain whatever buffered while we were away.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!sessionRef.current) return;
+      acquireWakeLock();
+      flushBuffer();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [acquireWakeLock, flushBuffer]);
 
   async function startSession(session: TrackerSession) {
     setBusy(true);
@@ -245,6 +329,9 @@ export default function TrackerPage() {
 
   async function endRun() {
     const session = sessionRef.current;
+    // Push any remaining buffered points before stopping so the final
+    // distance on the server matches what the runner saw.
+    await flushBuffer();
     stopTracking();
     if (session && tokenRef.current) {
       await fetch(`/api/sessions/${session.id}/stop`, {
@@ -252,9 +339,11 @@ export default function TrackerPage() {
         headers: { Authorization: `Bearer ${tokenRef.current}` },
       });
     }
-    setActiveSession(null);
-    sessionRef.current = null;
-    await loadSessions();
+    if (session) {
+      finishRun(session);
+    } else {
+      await loadSessions();
+    }
   }
 
   useEffect(() => stopTracking, [stopTracking]);
@@ -401,9 +490,78 @@ export default function TrackerPage() {
             >
               Stop run
             </button>
-            <p className="mt-3 text-xs text-zinc-600">
-              Keep this screen open — browser tabs pause GPS in the background.
+            <p className="mt-3 text-xs text-zinc-500">
+              {wakeLockActive
+                ? "Your screen will stay awake during the run."
+                : "Keep the screen on while you run."}{" "}
+              Switching to another app pauses GPS — tracking picks back up when
+              you return.
             </p>
+          </div>
+        )}
+
+        {screen === "done" && finished && (
+          <div className="mt-8 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                className="h-7 w-7 text-emerald-500"
+              >
+                <path d="M20 6 9 17l-5-5" />
+              </svg>
+            </div>
+            <h2 className="mt-4 text-2xl font-semibold">Run complete</h2>
+            <p className="mt-1 text-sm text-zinc-500">{finished.name}</p>
+
+            <div className="mt-6 grid grid-cols-3 gap-3">
+              <div className="rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900">
+                <p className="text-xl font-semibold">
+                  {formatDistance(finished.stats.distanceMeters, units)}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">Distance</p>
+              </div>
+              <div className="rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900">
+                <p className="text-xl font-semibold">
+                  {formatDuration(finished.stats.durationSeconds)}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">Time</p>
+              </div>
+              <div className="rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900">
+                <p className="text-xl font-semibold">
+                  {formatPace(
+                    finished.stats.distanceMeters,
+                    finished.stats.durationSeconds,
+                    units
+                  )}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">Avg pace</p>
+              </div>
+            </div>
+
+            <a
+              href={`/track/${finished.slug}`}
+              className="mt-6 block w-full rounded-xl bg-emerald-500 py-3 font-semibold text-black hover:bg-emerald-400"
+            >
+              View your run
+            </a>
+            <a
+              href="/dashboard"
+              className="mt-3 block w-full rounded-xl border border-zinc-300 py-3 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              Back to dashboard
+            </a>
+            <button
+              onClick={() => {
+                setFinished(null);
+                loadSessions();
+              }}
+              className="mt-3 w-full py-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+            >
+              Run another session
+            </button>
           </div>
         )}
       </div>
