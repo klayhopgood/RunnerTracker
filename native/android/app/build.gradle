@@ -1,5 +1,11 @@
 apply plugin: 'com.android.application'
 
+// Release signing is driven entirely by environment variables so CI can sign
+// Play Store AABs while local debug builds keep working with no setup.
+// ANDROID_KEYSTORE_FILE points at the keystore decoded from the
+// ANDROID_KEYSTORE_BASE64 GitHub Actions secret.
+def releaseKeystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
+
 android {
     namespace = "app.runnertracker.mobile"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,7 +13,7 @@ android {
         applicationId "app.runnertracker.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode 2
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,10 +22,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseKeystoreFile) {
+            release {
+                storeFile file(releaseKeystoreFile)
+                storeType "PKCS12"
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseKeystoreFile) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-name: Android APK
+name: Android build
 
 on:
   push:
@@ -34,21 +34,45 @@ jobs:
         run: npx cap sync android
         working-directory: native
 
+      # Debug APK — sideloadable for testing (release-signed builds can't be
+      # installed over it, so both flavors stay published).
       - name: Build debug APK
         run: ./gradlew assembleDebug
         working-directory: native/android
+
+      - name: Decode release keystore
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      # Signed release AAB — the only format Google Play accepts.
+      - name: Build signed release AAB
+        run: ./gradlew bundleRelease
+        working-directory: native/android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: runnertracker-debug-apk
           path: native/android/app/build/outputs/apk/debug/app-debug.apk
 
-      # Rolling prerelease so the APK is downloadable from a stable public link
-      # (GitHub artifacts require login; release assets don't).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runnertracker-release-aab
+          path: native/android/app/build/outputs/bundle/release/app-release.aab
+
+      # Rolling prerelease so both builds are downloadable from a stable public
+      # link (GitHub artifacts require login; release assets don't).
       - name: Publish to rolling release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
           name: RunnerTracker Android (latest)
           prerelease: true
-          files: native/android/app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            native/android/app/build/outputs/apk/debug/app-debug.apk
+            native/android/app/build/outputs/bundle/release/app-release.aab

@@ -24,6 +24,8 @@ Google Play and the Apple App Store. Items marked **[KLAY]** need you; items mar
 - [ ] **[KLAY]** Enroll in **Apple Developer Program** — https://developer.apple.com/programs/enroll/ — US$99/year, individual enrollment, ~48h approval.
 - [ ] **[KLAY]** Recruit **12+ closed testers** for Google Play. Personal Play accounts must run a closed test with 12+ testers continuously for **14 days** before production access. Friends/family Gmail addresses work. This is the biggest schedule risk — start as soon as the Play account exists.
 - [ ] **[KLAY]** Create a reviewer demo account in the app (e.g. reviewer@runnertracker.app) once signup is stable — needed for Apple review notes.
+- [ ] **[KLAY]** Fix Mapbox token: production `MAPBOX_ACCESS_TOKEN` is valid but Mapbox rejects Tilequery with 403 — in the Mapbox dashboard use the default public pk token or recreate the secret token with public read scopes and NO URL restriction, then update the Vercel env var. Low priority (Open-Elevation fallback works).
+- [ ] **[KLAY]** Record the Play screen-recording video of the new disclosure → permission prompt → live tracking flow (needed for the background-location declaration).
 
 ## 3. Website/legal work (done or in flight)
 
@@ -36,8 +38,8 @@ Google Play and the Apple App Store. Items marked **[KLAY]** need you; items mar
 
 ## 4. App work still to do before submission
 
-- [ ] **[AGENT — queued]** Prominent background-location disclosure screen shown BEFORE the permission prompt on the tracker screen ("RunnerTracker collects location data to enable live run sharing even when the app is closed or not in use. Allow?"). Google requires this exact pattern and a screen recording of it.
-- [ ] **[AGENT — queued]** Android release signing: generate a release keystore, store it in GitHub Actions secrets, switch CI from debug APK to a **signed release AAB** (Play only accepts AABs).
+- [x] **[AGENT]** Prominent background-location disclosure screen shown BEFORE the permission prompt on the tracker screen — shipped (native app only; "Location sharing" modal with Allow / Not now, shown once before the first run starts).
+- [x] **[AGENT]** Android release signing — done: CI now also builds a **signed release AAB** (`app-release.aab` on the rolling `android-latest` release, alongside the debug APK). Signing credentials are in `android-release-signing.local.txt` at the repo root (git-ignored) — **BACK THEM UP**; losing them means losing the ability to update the app on Play.
 - [ ] **[AGENT — on request]** Store graphics: 512px icon + 1024×500 feature graphic (Play), 6.7"/6.5" iPhone screenshots (Apple).
 - [ ] Background-tracking + elevation fixes verified on a real run (in flight — retest with the NEW APK once released).
 
@@ -69,6 +71,6 @@ Google Play and the Apple App Store. Items marked **[KLAY]** need you; items mar
 - No account deletion → **handled** (in-app + web page).
 - Privacy policy missing background-location disclosure → **handled** (dedicated section).
 - No demo account for Apple reviewers → on your list (section 2).
-- Google prominent disclosure missing before permission prompt → queued agent work (section 4).
-- Debug-signed build uploaded to Play → queued agent work: release AAB (section 4).
+- Google prominent disclosure missing before permission prompt → **handled** (disclosure modal in the native app, section 4).
+- Debug-signed build uploaded to Play → **handled** (CI publishes a signed release AAB, section 4).
 - Support URL/email dead → on your list (section 2).
