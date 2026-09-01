@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Marker, type Map as MaplibreMap } from "maplibre-gl";
+import { Marker, Popup, type Map as MaplibreMap } from "maplibre-gl";
 import type { GeoJSONSource } from "maplibre-gl";
 import { MapView } from "./MapView";
 import { createClient } from "@/lib/supabase/client";
@@ -52,8 +52,37 @@ export function LiveMap() {
   const markersRef = useRef(new Map<string, Marker>());
   const trailsRef = useRef(new Map<string, [number, number][]>());
   const runnersRef = useRef(new Map<string, LiveRunner>());
+  const popupRef = useRef<Popup | null>(null);
   const [selected, setSelected] = useState<LiveRunner | null>(null);
   const [liveCount, setLiveCount] = useState<number | null>(null);
+
+  // Name bubble pinned above the selected runner's marker (follows live updates).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selected?.lastPoint) {
+      popupRef.current?.remove();
+      popupRef.current = null;
+      return;
+    }
+    if (!popupRef.current) {
+      popupRef.current = new Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 18,
+        className: "runner-name-popup",
+      });
+    }
+    popupRef.current
+      .setLngLat([selected.lastPoint.lng, selected.lastPoint.lat])
+      .setText(selected.displayName)
+      .addTo(map);
+  }, [selected]);
+
+  useEffect(() => {
+    return () => {
+      popupRef.current?.remove();
+    };
+  }, []);
 
   const [openTool, setOpenTool] = useState<"search" | "link" | null>(null);
   const [searchName, setSearchName] = useState("");

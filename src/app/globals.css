@@ -30,3 +30,31 @@ body {
 .maplibregl-map .maplibregl-ctrl-top-right {
   top: 64px;
 }
+
+/* Runner name bubble shown above a clicked marker */
+.runner-name-popup .maplibregl-popup-content {
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #18181b;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.dark .runner-name-popup .maplibregl-popup-content {
+  color: #fafafa;
+  background: #18181b;
+}
+.dark .runner-name-popup .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.dark .runner-name-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: #18181b;
+}
+.dark .runner-name-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: #18181b;
+}
+.dark .runner-name-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #18181b;
+}
+.dark .runner-name-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #18181b;
+}
