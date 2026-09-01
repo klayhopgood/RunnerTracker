@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { DeleteAccountPanel } from "@/components/dashboard/DeleteAccountPanel";
 import { DevicesPanel } from "@/components/dashboard/DevicesPanel";
 import { SessionsPanel } from "@/components/dashboard/SessionsPanel";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -69,6 +70,7 @@ export default async function DashboardPage() {
 
         <DevicesPanel />
         <SessionsPanel />
+        <DeleteAccountPanel />
       </main>
     </div>
   );
