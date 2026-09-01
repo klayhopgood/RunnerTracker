@@ -39,11 +39,25 @@ npm run dev
 
 1. [cloud.maptiler.com](https://cloud.maptiler.com) → API Keys → Create.
 2. Name: `runtracker` (or similar).
-3. **Allowed HTTP Origins** (recommended once you know domains):
-   - `http://localhost:3000`
-   - `https://your-app.vercel.app`
-   - Your production domain
+3. **Allowed HTTP Origins** — MapTiler wants **domains only, no `http://`**:
+   - `localhost` (local dev)
+   - `your-app.vercel.app` (Vercel preview/production)
+   - Or leave **empty** to allow all origins while testing
 4. Copy key → `NEXT_PUBLIC_MAPTILER_KEY` in `.env.local` and Vercel.
+
+## Elevation correction
+
+Server-side DEM lookup: **Mapbox Tilequery** primary, **Open-Elevation** fallback, in-memory cache.
+
+1. [account.mapbox.com](https://account.mapbox.com/access-tokens/) → create a token.
+2. Add `MAPBOX_ACCESS_TOKEN` to Vercel (server-only, no `NEXT_PUBLIC_` prefix).
+3. Optional: `OPEN_ELEVATION_URL` (defaults to the public Open-Elevation API).
+
+Test after deploy:
+
+```bash
+curl "https://your-app.vercel.app/api/elevation?lat=-33.8688&lng=151.2093"
+```
 
 ## Vercel
 
@@ -55,7 +69,7 @@ npm run dev
 
 See `FOR-AGENT.md` in the Outbid workspace (or project spec) for the full roadmap.
 
-- **Phase 1** (this commit): scaffold, auth, static map
+- **Phase 1**: scaffold, auth, static map, elevation API
 - **Phase 2**: device pairing, sessions, GPS ingest, Realtime
-- **Phase 3**: Capacitor, elevation, private viewer
+- **Phase 3**: Capacitor, private viewer
 - **Phase 4**: scale, polish, app store prep
