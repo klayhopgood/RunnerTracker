@@ -6,6 +6,11 @@ import { useUnits } from "@/lib/units";
 import { UnitsToggle } from "@/components/layout/UnitsToggle";
 import { DEVICE_TOKEN_KEY as TOKEN_KEY } from "@/lib/device-token";
 import { isNativeApp, watchNativeApp, watchNativeLocation } from "@/lib/native-geo";
+import {
+  BackgroundDisclosure,
+  isBgDisclosureAccepted,
+  markBgDisclosureAccepted,
+} from "@/components/tracker/BackgroundDisclosure";
 
 const FLUSH_INTERVAL_MS = 3000;
 
@@ -68,6 +73,11 @@ export default function TrackerPage() {
   // may be injected after page load).
   const [inApp, setInApp] = useState(false);
   useEffect(() => watchNativeApp(() => setInApp(true)), []);
+
+  // Session awaiting the background-location disclosure (native app only).
+  // Google Play requires this prominent disclosure BEFORE the runtime
+  // permission prompt that starting the native watcher triggers.
+  const [disclosureSession, setDisclosureSession] = useState<TrackerSession | null>(null);
 
   const tokenRef = useRef<string | null>(null);
   const bufferRef = useRef<PendingPoint[]>([]);
@@ -332,6 +342,17 @@ export default function TrackerPage() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [acquireWakeLock, flushBuffer]);
 
+  // Entry point when the runner taps a session. Inside the native app the
+  // first run triggers Android's location permission prompt (via the
+  // background watcher), so the prominent disclosure must be accepted first.
+  function requestStartSession(session: TrackerSession) {
+    if (isNativeApp() && !isBgDisclosureAccepted()) {
+      setDisclosureSession(session);
+      return;
+    }
+    startSession(session);
+  }
+
   async function startSession(session: TrackerSession) {
     setBusy(true);
     setError(null);
@@ -447,7 +468,7 @@ export default function TrackerPage() {
             {sessions.map((session) => (
               <button
                 key={session.id}
-                onClick={() => startSession(session)}
+                onClick={() => requestStartSession(session)}
                 disabled={busy}
                 className="w-full rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm hover:border-emerald-500/60 dark:border-zinc-800 dark:bg-zinc-900 disabled:opacity-50"
               >
@@ -601,6 +622,18 @@ export default function TrackerPage() {
               Run another session
             </button>
           </div>
+        )}
+
+        {disclosureSession && (
+          <BackgroundDisclosure
+            onAllow={() => {
+              const session = disclosureSession;
+              markBgDisclosureAccepted();
+              setDisclosureSession(null);
+              startSession(session);
+            }}
+            onCancel={() => setDisclosureSession(null)}
+          />
         )}
       </div>
     </div>
