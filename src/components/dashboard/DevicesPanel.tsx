@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DEVICE_TOKEN_KEY } from "@/lib/device-token";
 
 type Device = {
   id: string;
@@ -12,9 +13,11 @@ type Device = {
 
 export function DevicesPanel() {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [thisDeviceId, setThisDeviceId] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadDevices = useCallback(async () => {
     const res = await fetch("/api/devices");
@@ -26,6 +29,8 @@ export function DevicesPanel() {
 
   useEffect(() => {
     loadDevices();
+    const token = localStorage.getItem(DEVICE_TOKEN_KEY);
+    if (token) setThisDeviceId(token.split(".")[0] ?? null);
   }, [loadDevices]);
 
   // While a code is showing, poll so the new phone appears as soon as it pairs.
@@ -37,6 +42,31 @@ export function DevicesPanel() {
     }, 1000);
     return () => clearInterval(timer);
   }, [pairingCode, secondsLeft, loadDevices]);
+
+  // "This phone" only counts if it's still in the (non-revoked) device list.
+  const thisDeviceConnected = devices.some((d) => d.id === thisDeviceId);
+
+  async function pairThisDevice() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/devices/pair-self", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "This phone", platform: "web" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Could not connect this phone");
+        return;
+      }
+      localStorage.setItem(DEVICE_TOKEN_KEY, data.deviceToken);
+      setThisDeviceId(data.deviceId);
+      await loadDevices();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function generateCode() {
     setBusy(true);
@@ -56,26 +86,49 @@ export function DevicesPanel() {
 
   async function revoke(id: string) {
     await fetch(`/api/devices/${id}`, { method: "DELETE" });
+    if (id === thisDeviceId) {
+      localStorage.removeItem(DEVICE_TOKEN_KEY);
+      setThisDeviceId(null);
+    }
     loadDevices();
   }
 
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-transparent">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-medium">Your phone</h2>
-        <button
-          onClick={generateCode}
-          disabled={busy}
-          className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-medium text-black hover:bg-emerald-400 disabled:opacity-50"
-        >
-          Connect a phone
-        </button>
+        <div className="flex items-center gap-2">
+          {!thisDeviceConnected && (
+            <button
+              onClick={pairThisDevice}
+              disabled={busy}
+              className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-medium text-black hover:bg-emerald-400 disabled:opacity-50"
+            >
+              Use this phone
+            </button>
+          )}
+          <button
+            onClick={generateCode}
+            disabled={busy}
+            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900 disabled:opacity-50"
+          >
+            Connect another phone
+          </button>
+        </div>
       </div>
+
+      {thisDeviceConnected && (
+        <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
+          This phone is connected — you can start a run right from here.
+        </p>
+      )}
+
+      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
       {pairingCode && secondsLeft > 0 && (
         <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
           <p className="text-sm text-zinc-700 dark:text-zinc-300">
-            On your phone, open{" "}
+            On the other phone, open{" "}
             <span className="font-mono text-emerald-600 dark:text-emerald-400">
               {typeof window !== "undefined" ? window.location.origin : ""}/tracker
             </span>{" "}
@@ -94,7 +147,8 @@ export function DevicesPanel() {
       <ul className="mt-4 space-y-2">
         {devices.length === 0 && (
           <li className="text-sm text-zinc-500">
-            No phone connected yet — pair one to start tracking runs.
+            No phone connected yet. On the phone you run with, just tap “Use
+            this phone”.
           </li>
         )}
         {devices.map((device) => (
@@ -103,7 +157,14 @@ export function DevicesPanel() {
             className="flex items-center justify-between rounded-lg bg-zinc-100 px-4 py-3 text-sm dark:bg-zinc-900"
           >
             <div>
-              <p className="font-medium">{device.name}</p>
+              <p className="font-medium">
+                {device.name}
+                {device.id === thisDeviceId && (
+                  <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-600 dark:text-emerald-400">
+                    this phone
+                  </span>
+                )}
+              </p>
               <p className="text-xs text-zinc-500">
                 {device.last_seen_at
                   ? `Last seen ${new Date(device.last_seen_at).toLocaleString()}`

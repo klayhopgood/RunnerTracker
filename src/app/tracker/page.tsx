@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatDistance, formatDuration, formatPace } from "@/lib/format";
 import { useUnits } from "@/lib/units";
 import { UnitsToggle } from "@/components/layout/UnitsToggle";
+import { DEVICE_TOKEN_KEY as TOKEN_KEY } from "@/lib/device-token";
 
-const TOKEN_KEY = "rt_device_token";
 const FLUSH_INTERVAL_MS = 3000;
 
 type TrackerSession = {
@@ -99,6 +99,32 @@ export default function TrackerPage() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Pairing failed");
+        return;
+      }
+      localStorage.setItem(TOKEN_KEY, data.deviceToken);
+      tokenRef.current = data.deviceToken;
+      await loadSessions();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pairSelf() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/devices/pair-self", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "This phone", platform: "web" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(
+          res.status === 401
+            ? "You're not logged in on this phone — log in first, or enter a pairing code below."
+            : (data.error ?? "Pairing failed")
+        );
         return;
       }
       localStorage.setItem(TOKEN_KEY, data.deviceToken);
@@ -246,9 +272,24 @@ export default function TrackerPage() {
         )}
 
         {screen === "pair" && (
-          <form onSubmit={pair} className="mt-8 space-y-4">
+          <div className="mt-8">
+            <button
+              onClick={pairSelf}
+              disabled={busy}
+              className="w-full rounded-lg bg-emerald-500 py-3 font-medium text-black hover:bg-emerald-400 disabled:opacity-50"
+            >
+              I&apos;m logged in — use this phone
+            </button>
+            {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+            <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-widest text-zinc-500">
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+              or
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+            </div>
+          <form onSubmit={pair} className="space-y-4">
             <p className="text-sm text-zinc-400">
-              Enter the 6-digit code shown on your dashboard to pair this phone.
+              Enter the 6-digit code from the dashboard (“Connect another
+              phone”) to pair this phone without logging in.
             </p>
             <input
               value={code}
@@ -264,7 +305,6 @@ export default function TrackerPage() {
               placeholder="Device name"
               className={inputCls}
             />
-            {error && <p className="text-sm text-red-400">{error}</p>}
             <button
               type="submit"
               disabled={busy || code.length !== 6}
@@ -273,6 +313,7 @@ export default function TrackerPage() {
               Pair this phone
             </button>
           </form>
+          </div>
         )}
 
         {screen === "sessions" && (
