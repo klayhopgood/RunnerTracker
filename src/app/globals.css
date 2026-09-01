@@ -25,7 +25,8 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
-/* Keep map zoom controls clear of the fixed site header. */
-.maplibregl-ctrl-top-right {
-  top: 60px;
+/* Keep map zoom controls clear of the fixed site header.
+   Extra specificity so this wins over maplibre-gl.css regardless of load order. */
+.maplibregl-map .maplibregl-ctrl-top-right {
+  top: 64px;
 }
