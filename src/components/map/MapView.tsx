@@ -5,7 +5,6 @@ import {
   AttributionControl,
   Map,
   NavigationControl,
-  setWorkerCount,
   setWorkerUrl,
   type Map as MaplibreMap,
 } from "maplibre-gl";
@@ -13,9 +12,11 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 type MapViewProps = {
   className?: string;
+  /** Inline styles win over maplibre-gl.css, which forces `position: relative` on the container. */
+  style?: React.CSSProperties;
 };
 
-export function MapView({ className }: MapViewProps) {
+export function MapView({ className, style }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
 
@@ -23,7 +24,6 @@ export function MapView({ className }: MapViewProps) {
     if (!containerRef.current || mapRef.current) return;
 
     setWorkerUrl("/maplibre-gl-worker.mjs");
-    setWorkerCount(0);
 
     const style = `${window.location.origin}/api/maptiler/maps/dataviz-dark/style.json`;
 
@@ -64,7 +64,8 @@ export function MapView({ className }: MapViewProps) {
   return (
     <div
       ref={containerRef}
-      className={className ?? "h-full w-full min-h-screen"}
+      className={className}
+      style={{ position: "absolute", inset: 0, ...style }}
       aria-label="Live runner map"
     />
   );
