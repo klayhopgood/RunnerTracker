@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ThemeToggle } from "./ThemeToggle";
+import { HeaderNav } from "./HeaderNav";
 
 export async function SiteHeader() {
   const supabase = await createClient();
@@ -18,29 +19,7 @@ export async function SiteHeader() {
       </Link>
       <nav className="pointer-events-auto flex items-center gap-2 text-sm">
         <ThemeToggle />
-        {user ? (
-          <Link
-            href="/dashboard"
-            className="rounded-full bg-emerald-500 px-4 py-2 font-medium text-black hover:bg-emerald-400"
-          >
-            Dashboard
-          </Link>
-        ) : (
-          <>
-            <Link
-              href="/login"
-              className="rounded-full bg-white/80 px-4 py-2 text-zinc-700 shadow-sm ring-1 ring-zinc-200 backdrop-blur hover:bg-white dark:bg-black/40 dark:text-zinc-200 dark:ring-zinc-700 dark:hover:bg-black/60"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/signup"
-              className="rounded-full bg-emerald-500 px-4 py-2 font-medium text-black hover:bg-emerald-400"
-            >
-              Sign up
-            </Link>
-          </>
-        )}
+        <HeaderNav loggedIn={!!user} />
       </nav>
     </header>
   );
