@@ -9,6 +9,12 @@ import {
   type Map as MaplibreMap,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { getTheme, THEME_EVENT, type Theme } from "@/lib/theme";
+
+function styleUrl(theme: Theme): string {
+  const mapId = theme === "dark" ? "dataviz-dark" : "dataviz";
+  return `${window.location.origin}/api/maptiler/maps/${mapId}/style.json`;
+}
 
 type MapViewProps = {
   className?: string;
@@ -28,11 +34,9 @@ export function MapView({ className, style, onMapReady }: MapViewProps) {
 
     setWorkerUrl("/maplibre-gl-worker.mjs");
 
-    const style = `${window.location.origin}/api/maptiler/maps/dataviz-dark/style.json`;
-
     const map = new Map({
       container: containerRef.current,
-      style,
+      style: styleUrl(getTheme()),
       center: [151.2093, -33.8688],
       zoom: 2,
       attributionControl: false,
@@ -58,8 +62,16 @@ export function MapView({ className, style, onMapReady }: MapViewProps) {
     const onResize = () => map.resize();
     window.addEventListener("resize", onResize);
 
+    // Consumers re-add their sources/layers on the map's "style.load" event.
+    const onThemeChange = (event: Event) => {
+      const theme = (event as CustomEvent<Theme>).detail;
+      map.setStyle(styleUrl(theme));
+    };
+    window.addEventListener(THEME_EVENT, onThemeChange);
+
     return () => {
       window.removeEventListener("resize", onResize);
+      window.removeEventListener(THEME_EVENT, onThemeChange);
       map.remove();
       mapRef.current = null;
     };

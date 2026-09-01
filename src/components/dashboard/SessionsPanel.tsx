@@ -16,10 +16,10 @@ type Session = {
 };
 
 const statusStyles: Record<string, string> = {
-  draft: "bg-zinc-800 text-zinc-300",
-  countdown: "bg-amber-500/20 text-amber-400",
-  live: "bg-emerald-500/20 text-emerald-400",
-  stopped: "bg-zinc-800 text-zinc-500",
+  draft: "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  countdown: "bg-amber-500/20 text-amber-600 dark:text-amber-400",
+  live: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+  stopped: "bg-zinc-200 text-zinc-500 dark:bg-zinc-800",
 };
 
 export function SessionsPanel() {
@@ -86,12 +86,12 @@ export function SessionsPanel() {
   }
 
   const inputCls =
-    "w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
+    "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
 
   return (
-    <section className="rounded-xl border border-zinc-800 p-6">
+    <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-transparent">
       <div className="flex items-center justify-between">
-        <h2 className="font-medium text-white">Run sessions</h2>
+        <h2 className="font-medium">Run sessions</h2>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-medium text-black hover:bg-emerald-400"
@@ -177,7 +177,7 @@ export function SessionsPanel() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-white px-3 py-2 text-sm font-medium text-black hover:bg-zinc-200 disabled:opacity-50"
+            className="w-full rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-zinc-200 disabled:opacity-50"
           >
             Create session
           </button>
@@ -196,10 +196,10 @@ export function SessionsPanel() {
         {sessions.map((session) => (
           <li
             key={session.id}
-            className="flex items-center justify-between rounded-lg bg-zinc-900 px-4 py-3 text-sm"
+            className="flex items-center justify-between rounded-lg bg-zinc-100 px-4 py-3 text-sm dark:bg-zinc-900"
           >
             <div>
-              <p className="font-medium text-white">{session.display_name}</p>
+              <p className="font-medium">{session.display_name}</p>
               <p className="mt-0.5 text-xs text-zinc-500">
                 {formatDistance(session.distance_meters, session.units)} ·{" "}
                 {formatDuration(session.duration_seconds)} · {session.visibility}
@@ -221,7 +221,7 @@ export function SessionsPanel() {
               )}
               <a
                 href={`/track/${session.slug}`}
-                className="text-xs text-zinc-400 underline-offset-2 hover:text-white hover:underline"
+                className="text-xs text-zinc-500 underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:underline"
               >
                 View
               </a>

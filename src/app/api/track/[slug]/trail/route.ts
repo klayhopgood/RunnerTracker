@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { downsample } from "@/lib/geo";
+import { isValidViewerCookie, viewerCookieName } from "@/lib/viewer-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ const MAX_TRAIL_POINTS = 1000;
 
 /** Trail as [lng, lat, elevation] triples, downsampled for rendering. */
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await context.params;
@@ -26,12 +27,20 @@ export async function GET(
   }
 
   if (session.visibility === "private") {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user || user.id !== session.user_id) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const cookie = request.cookies.get(viewerCookieName(slug))?.value;
+    let allowed = isValidViewerCookie(slug, cookie);
+    if (!allowed) {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      allowed = !!user && user.id === session.user_id;
+    }
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Password required", needsPassword: true },
+        { status: 401 }
+      );
     }
   }
 

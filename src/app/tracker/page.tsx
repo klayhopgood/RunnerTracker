@@ -232,10 +232,10 @@ export default function TrackerPage() {
   useEffect(() => stopTracking, [stopTracking]);
 
   const inputCls =
-    "w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-3 text-white placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
+    "w-full rounded-lg border border-zinc-300 bg-white px-3 py-3 text-zinc-900 placeholder:text-zinc-400 focus:border-emerald-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:placeholder:text-zinc-600";
 
   return (
-    <div className="min-h-full bg-zinc-950 px-6 py-10 text-white">
+    <div className="min-h-full px-6 py-10">
       <div className="mx-auto max-w-sm">
         <h1 className="text-center text-xl font-semibold">RunnerTracker</h1>
 
@@ -279,7 +279,7 @@ export default function TrackerPage() {
               Pick a session to run. Create sessions from your dashboard.
             </p>
             {sessions.length === 0 && (
-              <p className="rounded-lg border border-zinc-800 p-4 text-sm text-zinc-500">
+              <p className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500 dark:border-zinc-800">
                 No runnable sessions. Create one on the dashboard first.
               </p>
             )}
@@ -288,7 +288,7 @@ export default function TrackerPage() {
                 key={session.id}
                 onClick={() => startSession(session)}
                 disabled={busy}
-                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-left hover:border-emerald-500/50 disabled:opacity-50"
+                className="w-full rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm hover:border-emerald-500/60 dark:border-zinc-800 dark:bg-zinc-900 disabled:opacity-50"
               >
                 <p className="font-medium">{session.display_name}</p>
                 <p className="mt-1 text-xs text-zinc-500">
@@ -304,7 +304,7 @@ export default function TrackerPage() {
             {error && <p className="text-sm text-red-400">{error}</p>}
             <button
               onClick={loadSessions}
-              className="w-full py-2 text-sm text-zinc-500 hover:text-white"
+              className="w-full py-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
             >
               Refresh
             </button>
@@ -333,13 +333,13 @@ export default function TrackerPage() {
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-xl bg-zinc-900 p-4">
+                  <div className="rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900">
                     <p className="text-2xl font-semibold">
                       {formatDistance(stats.distanceMeters, activeSession.units)}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">Distance</p>
                   </div>
-                  <div className="rounded-xl bg-zinc-900 p-4">
+                  <div className="rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900">
                     <p className="text-2xl font-semibold">
                       {formatPace(
                         stats.distanceMeters,

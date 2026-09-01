@@ -1,12 +1,28 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isValidViewerCookie, viewerCookieName } from "@/lib/viewer-auth";
 
 export const dynamic = "force-dynamic";
 
-/** Session details for the viewer page. Private sessions are owner-only until Phase 3's password flow. */
+async function canViewPrivate(
+  request: NextRequest,
+  slug: string,
+  ownerId: string
+): Promise<boolean> {
+  const cookie = request.cookies.get(viewerCookieName(slug))?.value;
+  if (isValidViewerCookie(slug, cookie)) return true;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return !!user && user.id === ownerId;
+}
+
+/** Session details for the viewer page. Private runs need the owner login or a viewer cookie. */
 export async function GET(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await context.params;
@@ -25,12 +41,12 @@ export async function GET(
   }
 
   if (session.visibility === "private") {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user || user.id !== session.user_id) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const allowed = await canViewPrivate(request, slug, session.user_id);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Password required", needsPassword: true },
+        { status: 401 }
+      );
     }
   }
 

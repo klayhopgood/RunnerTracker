@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-full items-center justify-center bg-zinc-950 px-4 py-12">
+    <div className="flex min-h-full items-center justify-center px-4 py-12">
       <AuthForm mode="login" />
     </div>
   );

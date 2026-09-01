@@ -74,10 +74,10 @@ export function AuthForm({ mode }: AuthFormProps) {
         : "Reset password";
 
   return (
-    <div className="mx-auto w-full max-w-sm space-y-6 rounded-xl border border-zinc-800 bg-zinc-950 p-8">
+    <div className="mx-auto w-full max-w-sm space-y-6 rounded-xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <div>
-        <h1 className="text-2xl font-semibold text-white">{title}</h1>
-        <p className="mt-1 text-sm text-zinc-400">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           {mode === "reset"
             ? "We will email you a reset link."
             : "Track live. Share your run."}
@@ -87,39 +87,39 @@ export function AuthForm({ mode }: AuthFormProps) {
       <form onSubmit={onSubmit} className="space-y-4">
         {mode === "signup" && (
           <label className="block space-y-1">
-            <span className="text-sm text-zinc-300">Display name</span>
+            <span className="text-sm text-zinc-600 dark:text-zinc-300">Display name</span>
             <input
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 focus:border-emerald-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
               autoComplete="name"
             />
           </label>
         )}
 
         <label className="block space-y-1">
-          <span className="text-sm text-zinc-300">Email</span>
+          <span className="text-sm text-zinc-600 dark:text-zinc-300">Email</span>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 focus:border-emerald-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
             autoComplete="email"
           />
         </label>
 
         {mode !== "reset" && (
           <label className="block space-y-1">
-            <span className="text-sm text-zinc-300">Password</span>
+            <span className="text-sm text-zinc-600 dark:text-zinc-300">Password</span>
             <input
               type="password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
+              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 focus:border-emerald-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
               autoComplete={
                 mode === "signup" ? "new-password" : "current-password"
               }
@@ -139,19 +139,19 @@ export function AuthForm({ mode }: AuthFormProps) {
         </button>
       </form>
 
-      <div className="space-y-2 text-center text-sm text-zinc-400">
+      <div className="space-y-2 text-center text-sm text-zinc-500 dark:text-zinc-400">
         {mode === "login" && (
           <>
             <p>
               No account?{" "}
-              <Link href="/signup" className="text-emerald-400 hover:underline">
+              <Link href="/signup" className="text-emerald-600 hover:underline dark:text-emerald-400">
                 Sign up
               </Link>
             </p>
             <p>
               <Link
                 href="/reset-password"
-                className="text-emerald-400 hover:underline"
+                className="text-emerald-600 hover:underline dark:text-emerald-400"
               >
                 Forgot password?
               </Link>
@@ -161,14 +161,14 @@ export function AuthForm({ mode }: AuthFormProps) {
         {mode === "signup" && (
           <p>
             Already have an account?{" "}
-            <Link href="/login" className="text-emerald-400 hover:underline">
+            <Link href="/login" className="text-emerald-600 hover:underline dark:text-emerald-400">
               Log in
             </Link>
           </p>
         )}
         {mode === "reset" && (
           <p>
-            <Link href="/login" className="text-emerald-400 hover:underline">
+            <Link href="/login" className="text-emerald-600 hover:underline dark:text-emerald-400">
               Back to login
             </Link>
           </p>

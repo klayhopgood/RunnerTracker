@@ -60,9 +60,9 @@ export function DevicesPanel() {
   }
 
   return (
-    <section className="rounded-xl border border-zinc-800 p-6">
+    <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-transparent">
       <div className="flex items-center justify-between">
-        <h2 className="font-medium text-white">Your phone</h2>
+        <h2 className="font-medium">Your phone</h2>
         <button
           onClick={generateCode}
           disabled={busy}
@@ -74,14 +74,14 @@ export function DevicesPanel() {
 
       {pairingCode && secondsLeft > 0 && (
         <div className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <p className="text-sm text-zinc-300">
+          <p className="text-sm text-zinc-700 dark:text-zinc-300">
             On your phone, open{" "}
-            <span className="font-mono text-emerald-400">
+            <span className="font-mono text-emerald-600 dark:text-emerald-400">
               {typeof window !== "undefined" ? window.location.origin : ""}/tracker
             </span>{" "}
             and enter this code:
           </p>
-          <p className="mt-2 text-center font-mono text-4xl font-bold tracking-[0.3em] text-white">
+          <p className="mt-2 text-center font-mono text-4xl font-bold tracking-[0.3em]">
             {pairingCode}
           </p>
           <p className="mt-2 text-center text-xs text-zinc-500">
@@ -100,10 +100,10 @@ export function DevicesPanel() {
         {devices.map((device) => (
           <li
             key={device.id}
-            className="flex items-center justify-between rounded-lg bg-zinc-900 px-4 py-3 text-sm"
+            className="flex items-center justify-between rounded-lg bg-zinc-100 px-4 py-3 text-sm dark:bg-zinc-900"
           >
             <div>
-              <p className="font-medium text-white">{device.name}</p>
+              <p className="font-medium">{device.name}</p>
               <p className="text-xs text-zinc-500">
                 {device.last_seen_at
                   ? `Last seen ${new Date(device.last_seen_at).toLocaleString()}`
