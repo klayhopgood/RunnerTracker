@@ -5,6 +5,7 @@ import { formatDistance, formatDuration, formatPace } from "@/lib/format";
 import { useUnits } from "@/lib/units";
 import { UnitsToggle } from "@/components/layout/UnitsToggle";
 import { DEVICE_TOKEN_KEY as TOKEN_KEY } from "@/lib/device-token";
+import { isNativeApp, watchNativeLocation } from "@/lib/native-geo";
 
 const FLUSH_INTERVAL_MS = 3000;
 
@@ -62,9 +63,15 @@ export default function TrackerPage() {
   const [finished, setFinished] = useState<FinishedRun | null>(null);
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
+  // True when running inside the native shell app (set post-mount to avoid
+  // a hydration mismatch; the Capacitor bridge only exists in the app).
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => setInApp(isNativeApp()), []);
+
   const tokenRef = useRef<string | null>(null);
   const bufferRef = useRef<PendingPoint[]>([]);
   const watchIdRef = useRef<number | null>(null);
+  const stopNativeWatchRef = useRef<(() => void) | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flushingRef = useRef(false);
   const sessionRef = useRef<TrackerSession | null>(null);
@@ -171,6 +178,8 @@ export default function TrackerPage() {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    stopNativeWatchRef.current?.();
+    stopNativeWatchRef.current = null;
     if (flushTimerRef.current) {
       clearInterval(flushTimerRef.current);
       flushTimerRef.current = null;
@@ -262,6 +271,25 @@ export default function TrackerPage() {
       setScreen("run");
       setStats({ distanceMeters: 0, durationSeconds: 0 });
       statsRef.current = { distanceMeters: 0, durationSeconds: 0 };
+
+      // Inside the shell app, native background GPS keeps recording with the
+      // phone locked — no wake lock needed, screen can turn off.
+      if (isNativeApp()) {
+        stopNativeWatchRef.current = watchNativeLocation(
+          (point) => {
+            setGpsStatus(
+              point.accuracy !== null
+                ? `GPS lock — ±${Math.round(point.accuracy)}m`
+                : "GPS lock"
+            );
+            bufferRef.current.push(point);
+          },
+          (message) => setGpsStatus(message)
+        );
+        flushTimerRef.current = setInterval(flushBuffer, FLUSH_INTERVAL_MS);
+        return;
+      }
+
       acquireWakeLock();
 
       if (!("geolocation" in navigator)) {
@@ -491,11 +519,20 @@ export default function TrackerPage() {
               Stop run
             </button>
             <p className="mt-3 text-xs text-zinc-500">
-              {wakeLockActive
-                ? "Your screen will stay awake during the run."
-                : "Keep the screen on while you run."}{" "}
-              Switching to another app pauses GPS — tracking picks back up when
-              you return.
+              {inApp ? (
+                <>
+                  GPS keeps recording with your phone locked or other apps open
+                  — lock it and run.
+                </>
+              ) : (
+                <>
+                  {wakeLockActive
+                    ? "Your screen will stay awake during the run."
+                    : "Keep the screen on while you run."}{" "}
+                  Switching to another app pauses GPS — tracking picks back up
+                  when you return.
+                </>
+              )}
             </p>
           </div>
         )}
