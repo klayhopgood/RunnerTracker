@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatDistance, formatDuration, type Units } from "@/lib/format";
+import { formatDistance, formatDuration } from "@/lib/format";
+import { useUnits } from "@/lib/units";
 
 type Session = {
   id: string;
@@ -9,7 +10,6 @@ type Session = {
   display_name: string;
   visibility: "public" | "private";
   status: string;
-  units: Units;
   distance_meters: number;
   duration_seconds: number;
   created_at: string;
@@ -23,6 +23,7 @@ const statusStyles: Record<string, string> = {
 };
 
 export function SessionsPanel() {
+  const [units] = useUnits();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +32,6 @@ export function SessionsPanel() {
   const [displayName, setDisplayName] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("public");
   const [viewerPassword, setViewerPassword] = useState("");
-  const [units, setUnits] = useState<Units>("metric");
   const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [autoStopMinutes, setAutoStopMinutes] = useState<number | "">("");
 
@@ -61,7 +61,6 @@ export function SessionsPanel() {
           displayName,
           visibility,
           viewerPassword: visibility === "private" ? viewerPassword : undefined,
-          units,
           countdownSeconds,
           autoStopMinutes: autoStopMinutes === "" ? null : autoStopMinutes,
         }),
@@ -109,26 +108,16 @@ export function SessionsPanel() {
             required
             className={inputCls}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <select
-              value={visibility}
-              onChange={(e) =>
-                setVisibility(e.target.value as "public" | "private")
-              }
-              className={inputCls}
-            >
-              <option value="public">Public — on the world map</option>
-              <option value="private">Private — link + password</option>
-            </select>
-            <select
-              value={units}
-              onChange={(e) => setUnits(e.target.value as Units)}
-              className={inputCls}
-            >
-              <option value="metric">Kilometres</option>
-              <option value="imperial">Miles</option>
-            </select>
-          </div>
+          <select
+            value={visibility}
+            onChange={(e) =>
+              setVisibility(e.target.value as "public" | "private")
+            }
+            className={inputCls}
+          >
+            <option value="public">Public — on the world map</option>
+            <option value="private">Private — link + password</option>
+          </select>
           {visibility === "private" && (
             <input
               type="password"
@@ -182,7 +171,8 @@ export function SessionsPanel() {
             Create session
           </button>
           <p className="text-xs text-zinc-500">
-            Then open the tracker on your paired phone to start running.
+            After creating it, hit “Start run” — it opens the tracker, which
+            uses this phone&apos;s GPS while you run.
           </p>
         </form>
       )}
@@ -201,7 +191,7 @@ export function SessionsPanel() {
             <div>
               <p className="font-medium">{session.display_name}</p>
               <p className="mt-0.5 text-xs text-zinc-500">
-                {formatDistance(session.distance_meters, session.units)} ·{" "}
+                {formatDistance(session.distance_meters, units)} ·{" "}
                 {formatDuration(session.duration_seconds)} · {session.visibility}
               </p>
             </div>
@@ -211,6 +201,14 @@ export function SessionsPanel() {
               >
                 {session.status}
               </span>
+              {session.status === "draft" && (
+                <a
+                  href="/tracker"
+                  className="rounded-lg bg-emerald-500 px-2.5 py-1 text-xs font-medium text-black hover:bg-emerald-400"
+                >
+                  Start run
+                </a>
+              )}
               {(session.status === "live" || session.status === "countdown") && (
                 <button
                   onClick={() => stopSession(session.id)}

@@ -45,9 +45,26 @@ export default async function DashboardPage() {
           <h1 className="text-3xl font-semibold">
             Hi, {profile?.display_name ?? user.email}
           </h1>
-          <p className="mt-2 text-zinc-500 dark:text-zinc-400">
-            Pair your phone, create a session, then start it from the tracker.
-          </p>
+          <ol className="mt-3 space-y-1 text-sm text-zinc-500 dark:text-zinc-400">
+            <li>1. Connect the phone you&apos;ll run with (below).</li>
+            <li>2. Create a run session and choose public or private.</li>
+            <li>
+              3. On that phone, open{" "}
+              <Link
+                href="/tracker"
+                className="font-medium text-emerald-600 underline underline-offset-2 dark:text-emerald-400"
+              >
+                the tracker
+              </Link>{" "}
+              and tap your session — GPS starts streaming to the map.
+            </li>
+          </ol>
+          <Link
+            href="/tracker"
+            className="mt-4 inline-block rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-black hover:bg-emerald-400"
+          >
+            Start a run on this phone →
+          </Link>
         </div>
 
         <DevicesPanel />

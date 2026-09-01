@@ -10,7 +10,7 @@ export async function GET() {
   const { data: sessions } = await admin
     .from("sessions")
     .select(
-      "id, slug, display_name, status, units, started_at, distance_meters, elevation_gain_meters, duration_seconds"
+      "id, slug, display_name, status, started_at, distance_meters, elevation_gain_meters, duration_seconds"
     )
     .eq("visibility", "public")
     .in("status", ["countdown", "live"])
@@ -32,7 +32,6 @@ export async function GET() {
         slug: session.slug,
         displayName: session.display_name,
         status: session.status,
-        units: session.units,
         startedAt: session.started_at,
         distanceMeters: session.distance_meters,
         elevationGainMeters: session.elevation_gain_meters,

@@ -9,7 +9,6 @@ const createSchema = z
     displayName: z.string().min(1).max(80),
     visibility: z.enum(["public", "private"]),
     viewerPassword: z.string().min(4).max(100).optional(),
-    units: z.enum(["metric", "imperial"]).default("metric"),
     countdownSeconds: z.number().int().min(0).max(3600).default(0),
     autoStopMinutes: z.number().int().min(1).max(24 * 60).nullable().default(null),
   })
@@ -45,7 +44,6 @@ export async function POST(request: Request) {
       viewer_password_hash: input.viewerPassword
         ? await bcrypt.hash(input.viewerPassword, 10)
         : null,
-      units: input.units,
       countdown_seconds: input.countdownSeconds,
       auto_stop_minutes: input.autoStopMinutes,
     })

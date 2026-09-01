@@ -11,15 +11,15 @@ import {
   formatDuration,
   formatElevation,
   formatPace,
-  type Units,
 } from "@/lib/format";
+import { useUnits } from "@/lib/units";
+import { UnitsToggle } from "@/components/layout/UnitsToggle";
 
 type SessionDetail = {
   id: string;
   slug: string;
   display_name: string;
   status: string;
-  units: Units;
   distance_meters: number;
   elevation_gain_meters: number;
   duration_seconds: number;
@@ -31,6 +31,7 @@ const panelCls =
   "rounded-xl border border-zinc-200 bg-white/90 text-zinc-900 shadow-lg backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90 dark:text-zinc-100";
 
 export function TrackViewer({ slug }: { slug: string }) {
+  const [units] = useUnits();
   const mapRef = useRef<MaplibreMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
   const coordsRef = useRef<[number, number][]>([]);
@@ -235,23 +236,26 @@ export function TrackViewer({ slug }: { slug: string }) {
         >
           <div className="flex items-center justify-between">
             <p className="font-semibold">{session.display_name}</p>
-            <span
-              className={`flex items-center gap-1.5 text-xs ${
-                session.status === "live"
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-zinc-500"
-              }`}
-            >
-              {session.status === "live" && (
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-              )}
-              {session.status}
-            </span>
+            <div className="flex items-center gap-2">
+              <UnitsToggle />
+              <span
+                className={`flex items-center gap-1.5 text-xs ${
+                  session.status === "live"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-zinc-500"
+                }`}
+              >
+                {session.status === "live" && (
+                  <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                )}
+                {session.status}
+              </span>
+            </div>
           </div>
           <dl className="mt-3 grid grid-cols-4 gap-2 text-center">
             <div>
               <dd className="font-mono text-sm font-semibold">
-                {formatDistance(session.distance_meters, session.units)}
+                {formatDistance(session.distance_meters, units)}
               </dd>
               <dt className="text-[10px] uppercase tracking-wide text-zinc-500">
                 Distance
@@ -270,7 +274,7 @@ export function TrackViewer({ slug }: { slug: string }) {
                 {formatPace(
                   session.distance_meters,
                   session.duration_seconds,
-                  session.units
+                  units
                 )}
               </dd>
               <dt className="text-[10px] uppercase tracking-wide text-zinc-500">
@@ -279,7 +283,7 @@ export function TrackViewer({ slug }: { slug: string }) {
             </div>
             <div>
               <dd className="font-mono text-sm font-semibold">
-                {formatElevation(session.elevation_gain_meters, session.units)}
+                {formatElevation(session.elevation_gain_meters, units)}
               </dd>
               <dt className="text-[10px] uppercase tracking-wide text-zinc-500">
                 Climb

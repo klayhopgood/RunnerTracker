@@ -12,15 +12,15 @@ import {
   formatDuration,
   formatElevation,
   formatPace,
-  type Units,
 } from "@/lib/format";
+import { useUnits } from "@/lib/units";
+import { UnitsToggle } from "@/components/layout/UnitsToggle";
 
 type LiveRunner = {
   sessionId: string;
   slug: string;
   displayName: string;
   status: string;
-  units: Units;
   distanceMeters: number;
   elevationGainMeters: number;
   durationSeconds: number;
@@ -47,6 +47,7 @@ const inputCls =
 
 export function LiveMap() {
   const router = useRouter();
+  const [units] = useUnits();
   const mapRef = useRef<MaplibreMap | null>(null);
   const markersRef = useRef(new Map<string, Marker>());
   const trailsRef = useRef(new Map<string, [number, number][]>());
@@ -199,7 +200,6 @@ export function LiveMap() {
           slug: update.slug,
           displayName: update.displayName,
           status: update.status,
-          units: existing?.units ?? "metric",
           distanceMeters: update.distanceMeters,
           elevationGainMeters: update.elevationGainMeters,
           durationSeconds: update.durationSeconds,
@@ -294,9 +294,9 @@ export function LiveMap() {
       <MapView onMapReady={handleMapReady} />
 
       {/* Bottom-left toolkit */}
-      <div className="absolute bottom-6 left-4 flex w-72 flex-col gap-2 sm:left-6">
+      <div className="absolute bottom-6 left-4 flex w-fit max-w-[calc(100vw-2rem)] flex-col gap-2 sm:left-6">
         {openTool === "search" && (
-          <div className={`${panelCls} p-3`}>
+          <div className={`${panelCls} w-72 max-w-full p-3`}>
             <form onSubmit={runSearch} className="flex gap-2">
               <input
                 value={searchName}
@@ -347,7 +347,7 @@ export function LiveMap() {
         )}
 
         {openTool === "link" && (
-          <div className={`${panelCls} p-3`}>
+          <div className={`${panelCls} w-72 max-w-full p-3`}>
             <form onSubmit={openPrivateLink} className="flex gap-2">
               <input
                 value={privateLink}
@@ -373,7 +373,7 @@ export function LiveMap() {
           </div>
         )}
 
-        <div className={`${panelCls} flex items-center gap-1 p-1.5`}>
+        <div className={`${panelCls} flex flex-wrap items-center gap-1 p-1.5`}>
           <span className="flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
             <span
               className={`inline-block h-2 w-2 rounded-full ${
@@ -403,6 +403,8 @@ export function LiveMap() {
           >
             Private link
           </button>
+          <span className="h-4 w-px bg-zinc-200 dark:bg-zinc-800" />
+          <UnitsToggle className="mx-1" />
         </div>
       </div>
 
@@ -428,7 +430,7 @@ export function LiveMap() {
             <div>
               <dt className="text-xs text-zinc-500">Distance</dt>
               <dd className="font-medium">
-                {formatDistance(selected.distanceMeters, selected.units)}
+                {formatDistance(selected.distanceMeters, units)}
               </dd>
             </div>
             <div>
@@ -443,14 +445,14 @@ export function LiveMap() {
                 {formatPace(
                   selected.distanceMeters,
                   selected.durationSeconds,
-                  selected.units
+                  units
                 )}
               </dd>
             </div>
             <div>
               <dt className="text-xs text-zinc-500">Elevation gain</dt>
               <dd className="font-medium">
-                {formatElevation(selected.elevationGainMeters, selected.units)}
+                {formatElevation(selected.elevationGainMeters, units)}
               </dd>
             </div>
           </dl>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { formatDistance, formatDuration, formatPace, type Units } from "@/lib/format";
+import { formatDistance, formatDuration, formatPace } from "@/lib/format";
+import { useUnits } from "@/lib/units";
+import { UnitsToggle } from "@/components/layout/UnitsToggle";
 
 const TOKEN_KEY = "rt_device_token";
 const FLUSH_INTERVAL_MS = 3000;
@@ -12,7 +14,6 @@ type TrackerSession = {
   display_name: string;
   visibility: string;
   status: string;
-  units: Units;
   countdown_seconds: number;
   countdown_ends_at: string | null;
 };
@@ -35,6 +36,7 @@ type Stats = {
 type Screen = "loading" | "pair" | "sessions" | "run";
 
 export default function TrackerPage() {
+  const [units] = useUnits();
   const [screen, setScreen] = useState<Screen>("loading");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -335,21 +337,18 @@ export default function TrackerPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900">
                     <p className="text-2xl font-semibold">
-                      {formatDistance(stats.distanceMeters, activeSession.units)}
+                      {formatDistance(stats.distanceMeters, units)}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">Distance</p>
                   </div>
                   <div className="rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900">
                     <p className="text-2xl font-semibold">
-                      {formatPace(
-                        stats.distanceMeters,
-                        stats.durationSeconds,
-                        activeSession.units
-                      )}
+                      {formatPace(stats.distanceMeters, stats.durationSeconds, units)}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">Avg pace</p>
                   </div>
                 </div>
+                <UnitsToggle />
               </div>
             )}
 
