@@ -1,0 +1,372 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { formatDistance, formatDuration, formatPace, type Units } from "@/lib/format";
+
+const TOKEN_KEY = "rt_device_token";
+const FLUSH_INTERVAL_MS = 3000;
+
+type TrackerSession = {
+  id: string;
+  slug: string;
+  display_name: string;
+  visibility: string;
+  status: string;
+  units: Units;
+  countdown_seconds: number;
+  countdown_ends_at: string | null;
+};
+
+type PendingPoint = {
+  lat: number;
+  lng: number;
+  altitude: number | null;
+  accuracy: number | null;
+  speed: number | null;
+  heading: number | null;
+  recordedAt: string;
+};
+
+type Stats = {
+  distanceMeters: number;
+  durationSeconds: number;
+};
+
+type Screen = "loading" | "pair" | "sessions" | "run";
+
+export default function TrackerPage() {
+  const [screen, setScreen] = useState<Screen>("loading");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Pairing
+  const [code, setCode] = useState("");
+  const [deviceName, setDeviceName] = useState("My phone");
+
+  // Sessions
+  const [sessions, setSessions] = useState<TrackerSession[]>([]);
+  const [activeSession, setActiveSession] = useState<TrackerSession | null>(null);
+
+  // Run state
+  const [countdownLeft, setCountdownLeft] = useState<number | null>(null);
+  const [stats, setStats] = useState<Stats>({ distanceMeters: 0, durationSeconds: 0 });
+  const [gpsStatus, setGpsStatus] = useState("Waiting for GPS…");
+
+  const tokenRef = useRef<string | null>(null);
+  const bufferRef = useRef<PendingPoint[]>([]);
+  const watchIdRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionRef = useRef<TrackerSession | null>(null);
+
+  const loadSessions = useCallback(async () => {
+    const token = tokenRef.current;
+    if (!token) return;
+    const res = await fetch("/api/tracker/sessions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      tokenRef.current = null;
+      setScreen("pair");
+      return;
+    }
+    const data = await res.json();
+    setSessions(data.sessions ?? []);
+    setScreen("sessions");
+  }, []);
+
+  useEffect(() => {
+    tokenRef.current = localStorage.getItem(TOKEN_KEY);
+    if (!tokenRef.current) {
+      setScreen("pair");
+    } else {
+      loadSessions();
+    }
+  }, [loadSessions]);
+
+  async function pair(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/devices/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, name: deviceName, platform: "web" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Pairing failed");
+        return;
+      }
+      localStorage.setItem(TOKEN_KEY, data.deviceToken);
+      tokenRef.current = data.deviceToken;
+      await loadSessions();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const stopTracking = useCallback(() => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (flushTimerRef.current) {
+      clearInterval(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    bufferRef.current = [];
+  }, []);
+
+  const flushBuffer = useCallback(async () => {
+    const token = tokenRef.current;
+    const session = sessionRef.current;
+    if (!token || !session || bufferRef.current.length === 0) return;
+
+    const points = bufferRef.current.splice(0, 50);
+    try {
+      const res = await fetch("/api/location", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ sessionId: session.id, points }),
+      });
+      const data = await res.json();
+      if (data.status === "countdown") {
+        setCountdownLeft(data.secondsRemaining);
+      } else if (data.status === "live") {
+        setCountdownLeft(null);
+        if (typeof data.distanceMeters === "number") {
+          setStats({
+            distanceMeters: data.distanceMeters,
+            durationSeconds: data.durationSeconds,
+          });
+        }
+      } else if (data.status === "stopped") {
+        stopTracking();
+        setActiveSession(null);
+        sessionRef.current = null;
+        await loadSessions();
+      }
+    } catch {
+      // Keep points buffered on network failure; splice already removed them —
+      // put them back at the front so nothing is lost.
+      bufferRef.current.unshift(...points);
+    }
+  }, [loadSessions, stopTracking]);
+
+  const beginTracking = useCallback(
+    (session: TrackerSession) => {
+      sessionRef.current = session;
+      setActiveSession(session);
+      setScreen("run");
+      setStats({ distanceMeters: 0, durationSeconds: 0 });
+
+      if (!("geolocation" in navigator)) {
+        setGpsStatus("This device has no GPS support");
+        return;
+      }
+
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          setGpsStatus(`GPS lock — ±${Math.round(pos.coords.accuracy)}m`);
+          bufferRef.current.push({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            altitude: pos.coords.altitude,
+            accuracy: pos.coords.accuracy,
+            speed: pos.coords.speed,
+            heading: pos.coords.heading,
+            recordedAt: new Date(pos.timestamp).toISOString(),
+          });
+        },
+        (err) => setGpsStatus(`GPS error: ${err.message}`),
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
+      );
+      flushTimerRef.current = setInterval(flushBuffer, FLUSH_INTERVAL_MS);
+    },
+    [flushBuffer]
+  );
+
+  async function startSession(session: TrackerSession) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (session.status === "draft") {
+        const res = await fetch(`/api/sessions/${session.id}/start`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tokenRef.current}` },
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error ?? "Could not start session");
+          return;
+        }
+        if (data.status === "countdown") {
+          setCountdownLeft(session.countdown_seconds);
+        }
+      }
+      beginTracking(session);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function endRun() {
+    const session = sessionRef.current;
+    stopTracking();
+    if (session && tokenRef.current) {
+      await fetch(`/api/sessions/${session.id}/stop`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokenRef.current}` },
+      });
+    }
+    setActiveSession(null);
+    sessionRef.current = null;
+    await loadSessions();
+  }
+
+  useEffect(() => stopTracking, [stopTracking]);
+
+  const inputCls =
+    "w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-3 text-white placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
+
+  return (
+    <div className="min-h-full bg-zinc-950 px-6 py-10 text-white">
+      <div className="mx-auto max-w-sm">
+        <h1 className="text-center text-xl font-semibold">RunnerTracker</h1>
+
+        {screen === "loading" && (
+          <p className="mt-10 text-center text-zinc-500">Loading…</p>
+        )}
+
+        {screen === "pair" && (
+          <form onSubmit={pair} className="mt-8 space-y-4">
+            <p className="text-sm text-zinc-400">
+              Enter the 6-digit code shown on your dashboard to pair this phone.
+            </p>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              inputMode="numeric"
+              placeholder="123456"
+              required
+              className={`${inputCls} text-center font-mono text-3xl tracking-[0.3em]`}
+            />
+            <input
+              value={deviceName}
+              onChange={(e) => setDeviceName(e.target.value)}
+              placeholder="Device name"
+              className={inputCls}
+            />
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            <button
+              type="submit"
+              disabled={busy || code.length !== 6}
+              className="w-full rounded-lg bg-emerald-500 py-3 font-medium text-black hover:bg-emerald-400 disabled:opacity-50"
+            >
+              Pair this phone
+            </button>
+          </form>
+        )}
+
+        {screen === "sessions" && (
+          <div className="mt-8 space-y-3">
+            <p className="text-sm text-zinc-400">
+              Pick a session to run. Create sessions from your dashboard.
+            </p>
+            {sessions.length === 0 && (
+              <p className="rounded-lg border border-zinc-800 p-4 text-sm text-zinc-500">
+                No runnable sessions. Create one on the dashboard first.
+              </p>
+            )}
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                onClick={() => startSession(session)}
+                disabled={busy}
+                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-left hover:border-emerald-500/50 disabled:opacity-50"
+              >
+                <p className="font-medium">{session.display_name}</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {session.visibility} ·{" "}
+                  {session.status === "draft"
+                    ? session.countdown_seconds > 0
+                      ? `starts after ${session.countdown_seconds}s countdown`
+                      : "starts immediately"
+                    : `resume (${session.status})`}
+                </p>
+              </button>
+            ))}
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            <button
+              onClick={loadSessions}
+              className="w-full py-2 text-sm text-zinc-500 hover:text-white"
+            >
+              Refresh
+            </button>
+          </div>
+        )}
+
+        {screen === "run" && activeSession && (
+          <div className="mt-8 text-center">
+            <p className="text-sm text-zinc-400">{activeSession.display_name}</p>
+
+            {countdownLeft !== null && countdownLeft > 0 ? (
+              <div className="mt-10">
+                <p className="text-sm uppercase tracking-widest text-amber-400">
+                  Starting in
+                </p>
+                <p className="mt-2 font-mono text-7xl font-bold">{countdownLeft}</p>
+              </div>
+            ) : (
+              <div className="mt-8 space-y-6">
+                <div>
+                  <p className="font-mono text-6xl font-bold">
+                    {formatDuration(stats.durationSeconds)}
+                  </p>
+                  <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
+                    Duration
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="rounded-xl bg-zinc-900 p-4">
+                    <p className="text-2xl font-semibold">
+                      {formatDistance(stats.distanceMeters, activeSession.units)}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">Distance</p>
+                  </div>
+                  <div className="rounded-xl bg-zinc-900 p-4">
+                    <p className="text-2xl font-semibold">
+                      {formatPace(
+                        stats.distanceMeters,
+                        stats.durationSeconds,
+                        activeSession.units
+                      )}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">Avg pace</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <p className="mt-6 text-xs text-zinc-500">{gpsStatus}</p>
+
+            <button
+              onClick={endRun}
+              className="mt-8 w-full rounded-xl bg-red-500 py-4 font-semibold text-white hover:bg-red-400"
+            >
+              Stop run
+            </button>
+            <p className="mt-3 text-xs text-zinc-600">
+              Keep this screen open — browser tabs pause GPS in the background.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

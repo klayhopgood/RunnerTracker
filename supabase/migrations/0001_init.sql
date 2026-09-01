@@ -93,6 +93,13 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- Backfill profiles for users who signed up before this migration ran
+insert into public.profiles (id, display_name)
+select u.id, coalesce(u.raw_user_meta_data->>'display_name', split_part(u.email, '@', 1))
+from auth.users u
+left join public.profiles p on p.id = u.id
+where p.id is null;
+
 -- RLS
 alter table profiles enable row level security;
 alter table devices enable row level security;

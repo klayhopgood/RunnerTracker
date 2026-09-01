@@ -14,11 +14,14 @@ type MapViewProps = {
   className?: string;
   /** Inline styles win over maplibre-gl.css, which forces `position: relative` on the container. */
   style?: React.CSSProperties;
+  onMapReady?: (map: MaplibreMap) => void;
 };
 
-export function MapView({ className, style }: MapViewProps) {
+export function MapView({ className, style, onMapReady }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
+  const onMapReadyRef = useRef(onMapReady);
+  onMapReadyRef.current = onMapReady;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -43,6 +46,7 @@ export function MapView({ className, style }: MapViewProps) {
 
     map.on("load", () => {
       map.resize();
+      onMapReadyRef.current?.(map);
     });
 
     map.on("error", (event) => {
