@@ -7,11 +7,24 @@ import {
   NavigationControl,
   setWorkerUrl,
   type Map as MaplibreMap,
+  type RequestTransformFunction,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 type MapViewProps = {
   className?: string;
+};
+
+const maptilerProxyTransform: RequestTransformFunction = (url) => {
+  if (!url.includes("api.maptiler.com")) return { url };
+
+  const parsed = new URL(url);
+  parsed.searchParams.delete("key");
+  const qs = parsed.searchParams.toString();
+
+  return {
+    url: `/api/maptiler${parsed.pathname}${qs ? `?${qs}` : ""}`,
+  };
 };
 
 export function MapView({ className }: MapViewProps) {
@@ -23,27 +36,13 @@ export function MapView({ className }: MapViewProps) {
 
     setWorkerUrl("/maplibre-gl-worker.mjs");
 
-    const key = process.env.NEXT_PUBLIC_MAPTILER_KEY;
-    const style = key
-      ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${key}`
-      : {
-          version: 8 as const,
-          sources: {},
-          layers: [
-            {
-              id: "background",
-              type: "background" as const,
-              paint: { "background-color": "#0f1419" },
-            },
-          ],
-        };
-
     const map = new Map({
       container: containerRef.current,
-      style,
+      style: "/api/maptiler/maps/dataviz-dark/style.json",
       center: [151.2093, -33.8688],
       zoom: 2,
       attributionControl: false,
+      transformRequest: maptilerProxyTransform,
     });
 
     map.addControl(new NavigationControl(), "top-right");
