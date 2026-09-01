@@ -5,6 +5,7 @@ import {
   AttributionControl,
   Map,
   NavigationControl,
+  setWorkerUrl,
   type Map as MaplibreMap,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -19,6 +20,8 @@ export function MapView({ className }: MapViewProps) {
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+
+    setWorkerUrl("/maplibre-gl-worker.mjs");
 
     const key = process.env.NEXT_PUBLIC_MAPTILER_KEY;
     const style = key
@@ -51,6 +54,10 @@ export function MapView({ className }: MapViewProps) {
 
     map.on("load", () => {
       map.resize();
+    });
+
+    map.on("error", (event) => {
+      console.error("MapLibre error:", event.error);
     });
 
     mapRef.current = map;
