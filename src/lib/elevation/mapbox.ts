@@ -15,7 +15,12 @@ export async function fetchMapboxElevation(
   url.searchParams.set("access_token", accessToken);
 
   const res = await fetch(url.toString(), { next: { revalidate: 86400 } });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // A 403 here means the token is rejected (missing public read scope or
+    // URL-restricted) — surface it in logs instead of silently falling back.
+    console.warn(`Mapbox tilequery failed: HTTP ${res.status}`);
+    return null;
+  }
 
   const data = (await res.json()) as TilequeryResponse;
   const ele = data.features?.[0]?.properties?.ele;

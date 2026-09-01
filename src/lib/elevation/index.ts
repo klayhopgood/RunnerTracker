@@ -93,6 +93,42 @@ export async function correctElevationBatch(
 }
 
 /**
+ * Picks the elevation series to compute climb from.
+ *
+ * Raw GPS altitude is preferred: both DEM sources are far too coarse for
+ * small hills (Mapbox terrain contours are quantized to 10 m, Open-Elevation
+ * is a ~30-90 m SRTM grid), so a short run over a real climb collapses to one
+ * flat DEM value while the barometer/GNSS altitude captured it. The corrected
+ * series is only a fallback for devices that report no usable altitude.
+ *
+ * The two series are never mixed: GPS altitude and DEM heights sit on
+ * different baselines, and switching mid-series would fabricate climbs.
+ */
+export function selectElevationGainSeries(
+  raw: Array<number | null>,
+  corrected: Array<number | null>
+): number[] {
+  const rawFinite = raw.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+  const coverage = raw.length > 0 ? rawFinite.length / raw.length : 0;
+
+  if (rawFinite.length >= 2 && coverage >= 0.5) {
+    const min = Math.min(...rawFinite);
+    const max = Math.max(...rawFinite);
+    // Informative = varies at all (a constant series means the device is
+    // repeating a stale last-known altitude) and is physically plausible.
+    if (max - min > 0.5 && min > -430 && max < 9000) {
+      return rawFinite;
+    }
+  }
+
+  return corrected.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v)
+  );
+}
+
+/**
  * Total climb over an elevation series.
  *
  * Uses a light moving average to knock down single-sample spikes, then

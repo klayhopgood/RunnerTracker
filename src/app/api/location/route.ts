@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { authenticateDevice } from "@/lib/device-auth";
-import { computeElevationGain, correctElevationBatch } from "@/lib/elevation";
+import {
+  computeElevationGain,
+  correctElevationBatch,
+  selectElevationGainSeries,
+} from "@/lib/elevation";
 import { haversineMeters } from "@/lib/geo";
 import { broadcast, PUBLIC_LIVE_CHANNEL, trackChannel } from "@/lib/realtime";
 
@@ -165,17 +169,20 @@ export async function POST(request: Request) {
 
   // Gain is recomputed over the whole stored series each flush. Incremental
   // per-batch deltas can't do hysteresis across batch boundaries, which is
-  // exactly where gradual climbs get lost.
+  // exactly where gradual climbs get lost. Raw GPS altitude is the primary
+  // series — DEM correction is too coarse for small hills (see
+  // selectElevationGainSeries) and stays for display baselines only.
   const { data: elevRows } = await admin
     .from("track_points")
-    .select("altitude_corrected")
+    .select("altitude_raw, altitude_corrected")
     .eq("session_id", session.id)
     .order("recorded_at", { ascending: true })
     .limit(20000);
   const elevationGainMeters = computeElevationGain(
-    (elevRows ?? [])
-      .map((r) => r.altitude_corrected)
-      .filter((e): e is number => e !== null)
+    selectElevationGainSeries(
+      (elevRows ?? []).map((r) => r.altitude_raw),
+      (elevRows ?? []).map((r) => r.altitude_corrected)
+    )
   );
 
   const last = usable[usable.length - 1]!;

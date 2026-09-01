@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { isNativeApp } from "@/lib/native-geo";
+import { watchNativeApp } from "@/lib/native-geo";
 
 // TODO: swap for the real store listings once published.
 const APP_STORE_URL = "https://apps.apple.com/"; // placeholder
@@ -16,10 +16,11 @@ const primaryCls =
   "rounded-full bg-emerald-500 px-4 py-2 font-medium text-black hover:bg-emerald-400";
 
 export function HeaderNav({ loggedIn }: { loggedIn: boolean }) {
-  // Detected post-mount: the Capacitor bridge only exists inside the app.
+  // Detected post-mount: the Capacitor bridge only exists inside the app
+  // and may be injected after page load.
   const [inApp, setInApp] = useState(false);
   const [showStores, setShowStores] = useState(false);
-  useEffect(() => setInApp(isNativeApp()), []);
+  useEffect(() => watchNativeApp(() => setInApp(true)), []);
 
   if (loggedIn) {
     return (

@@ -5,7 +5,7 @@ import { formatDistance, formatDuration, formatPace } from "@/lib/format";
 import { useUnits } from "@/lib/units";
 import { UnitsToggle } from "@/components/layout/UnitsToggle";
 import { DEVICE_TOKEN_KEY as TOKEN_KEY } from "@/lib/device-token";
-import { isNativeApp, watchNativeLocation } from "@/lib/native-geo";
+import { isNativeApp, watchNativeApp, watchNativeLocation } from "@/lib/native-geo";
 
 const FLUSH_INTERVAL_MS = 3000;
 
@@ -64,9 +64,10 @@ export default function TrackerPage() {
   const [wakeLockActive, setWakeLockActive] = useState(false);
 
   // True when running inside the native shell app (set post-mount to avoid
-  // a hydration mismatch; the Capacitor bridge only exists in the app).
+  // a hydration mismatch; the Capacitor bridge only exists in the app and
+  // may be injected after page load).
   const [inApp, setInApp] = useState(false);
-  useEffect(() => setInApp(isNativeApp()), []);
+  useEffect(() => watchNativeApp(() => setInApp(true)), []);
 
   const tokenRef = useRef<string | null>(null);
   const bufferRef = useRef<PendingPoint[]>([]);
