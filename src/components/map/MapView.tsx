@@ -49,9 +49,17 @@ export function MapView({ className }: MapViewProps) {
       "bottom-right"
     );
 
+    map.on("load", () => {
+      map.resize();
+    });
+
     mapRef.current = map;
 
+    const onResize = () => map.resize();
+    window.addEventListener("resize", onResize);
+
     return () => {
+      window.removeEventListener("resize", onResize);
       map.remove();
       mapRef.current = null;
     };
@@ -60,7 +68,7 @@ export function MapView({ className }: MapViewProps) {
   return (
     <div
       ref={containerRef}
-      className={className ?? "h-full w-full"}
+      className={className ?? "h-full w-full min-h-screen"}
       aria-label="Live runner map"
     />
   );
