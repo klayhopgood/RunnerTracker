@@ -6,6 +6,7 @@ import { useUnits } from "@/lib/units";
 import { UnitsToggle } from "@/components/layout/UnitsToggle";
 import { DEVICE_TOKEN_KEY as TOKEN_KEY } from "@/lib/device-token";
 import { isNativeApp, watchNativeApp, watchNativeLocation } from "@/lib/native-geo";
+import { defaultRunName } from "@/lib/run-name";
 import {
   BackgroundDisclosure,
   isBgDisclosureAccepted,
@@ -45,7 +46,43 @@ type FinishedRun = {
   stats: Stats;
 };
 
-type Screen = "loading" | "pair" | "sessions" | "run" | "done";
+type Screen = "loading" | "pair" | "start" | "run" | "done";
+
+/** What a Start tap wants to do once the background disclosure is accepted. */
+type PendingStart =
+  | { kind: "quick" }
+  | { kind: "session"; session: TrackerSession };
+
+const COUNTDOWN_CHOICES = [
+  { value: 0, label: "No countdown" },
+  { value: 10, label: "10s" },
+  { value: 30, label: "30s" },
+  { value: 60, label: "60s" },
+];
+
+/**
+ * The Capacitor bridge can be injected after page load, so an immediate
+ * auto-start could miss that we're inside the native app (skipping the
+ * required disclosure and the native GPS watcher). Give the bridge a short
+ * window to appear before an auto-start; resolves instantly on the web
+ * after the timeout and instantly in the app once the bridge is there.
+ */
+function waitForPossibleBridge(maxMs = 1200): Promise<void> {
+  return new Promise((resolve) => {
+    if (isNativeApp()) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      stop();
+      resolve();
+    }, maxMs);
+    const stop = watchNativeApp(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
 
 export default function TrackerPage() {
   const [units] = useUnits();
@@ -57,7 +94,14 @@ export default function TrackerPage() {
   const [code, setCode] = useState("");
   const [deviceName, setDeviceName] = useState("My phone");
 
-  // Sessions
+  // Quick-start form
+  const [runName, setRunName] = useState(() => defaultRunName());
+  const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [viewerPassword, setViewerPassword] = useState("");
+  const [countdownSeconds, setCountdownSeconds] = useState(10);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Planned (draft) + resumable sessions
   const [sessions, setSessions] = useState<TrackerSession[]>([]);
   const [activeSession, setActiveSession] = useState<TrackerSession | null>(null);
 
@@ -74,12 +118,16 @@ export default function TrackerPage() {
   const [inApp, setInApp] = useState(false);
   useEffect(() => watchNativeApp(() => setInApp(true)), []);
 
-  // Session awaiting the background-location disclosure (native app only).
-  // Google Play requires this prominent disclosure BEFORE the runtime
+  // Start action awaiting the background-location disclosure (native app
+  // only). Google Play requires this prominent disclosure BEFORE the runtime
   // permission prompt that starting the native watcher triggers.
-  const [disclosureSession, setDisclosureSession] = useState<TrackerSession | null>(null);
+  const [disclosurePending, setDisclosurePending] = useState<PendingStart | null>(null);
 
   const tokenRef = useRef<string | null>(null);
+  // Session id from /tracker?session=<id> (dashboard "Start run" deep link).
+  const autoStartIdRef = useRef<string | null>(null);
+  // Latest requestStartSession, callable from the stable loadSessions callback.
+  const requestStartRef = useRef<((session: TrackerSession) => void) | null>(null);
   const bufferRef = useRef<PendingPoint[]>([]);
   const watchIdRef = useRef<number | null>(null);
   const stopNativeWatchRef = useRef<(() => void) | null>(null);
@@ -122,12 +170,32 @@ export default function TrackerPage() {
       return;
     }
     const data = await res.json();
-    setSessions(data.sessions ?? []);
-    setScreen("sessions");
+    const list: TrackerSession[] = data.sessions ?? [];
+    setSessions(list);
+
+    // Dashboard deep link: /tracker?session=<id> auto-starts that session
+    // (through the same disclosure gate) instead of showing the start screen.
+    const wantedId = autoStartIdRef.current;
+    if (wantedId) {
+      autoStartIdRef.current = null;
+      window.history.replaceState(null, "", "/tracker");
+      const target = list.find((s) => s.id === wantedId);
+      if (target && ["draft", "countdown", "live"].includes(target.status)) {
+        setScreen("start");
+        await waitForPossibleBridge();
+        requestStartRef.current?.(target);
+        return;
+      }
+      setNotice("That run has already ended or was removed — start a new one below.");
+    }
+    setScreen("start");
   }, []);
 
   useEffect(() => {
     tokenRef.current = localStorage.getItem(TOKEN_KEY);
+    autoStartIdRef.current = new URLSearchParams(window.location.search).get(
+      "session"
+    );
     if (!tokenRef.current) {
       setScreen("pair");
     } else {
@@ -342,15 +410,61 @@ export default function TrackerPage() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [acquireWakeLock, flushBuffer]);
 
-  // Entry point when the runner taps a session. Inside the native app the
+  // Entry points when the runner taps Start. Inside the native app the
   // first run triggers Android's location permission prompt (via the
   // background watcher), so the prominent disclosure must be accepted first.
   function requestStartSession(session: TrackerSession) {
     if (isNativeApp() && !isBgDisclosureAccepted()) {
-      setDisclosureSession(session);
+      setDisclosurePending({ kind: "session", session });
       return;
     }
     startSession(session);
+  }
+  requestStartRef.current = requestStartSession;
+
+  function requestQuickStart() {
+    if (isNativeApp() && !isBgDisclosureAccepted()) {
+      setDisclosurePending({ kind: "quick" });
+      return;
+    }
+    quickStart();
+  }
+
+  /** One tap: create the session from the form, then start it right away. */
+  async function quickStart() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/tracker/sessions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${tokenRef.current}`,
+        },
+        body: JSON.stringify({
+          displayName: runName.trim() || defaultRunName(),
+          visibility,
+          viewerPassword:
+            visibility === "private" ? viewerPassword : undefined,
+          countdownSeconds,
+        }),
+      });
+      if (res.status === 401) {
+        localStorage.removeItem(TOKEN_KEY);
+        tokenRef.current = null;
+        setScreen("pair");
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Could not create the run");
+        return;
+      }
+      await startSession(data.session);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function startSession(session: TrackerSession) {
@@ -455,41 +569,136 @@ export default function TrackerPage() {
           </div>
         )}
 
-        {screen === "sessions" && (
-          <div className="mt-8 space-y-3">
-            <p className="text-sm text-zinc-400">
-              Pick a session to run. Create sessions from your dashboard.
-            </p>
-            {sessions.length === 0 && (
-              <p className="rounded-lg border border-zinc-200 p-4 text-sm text-zinc-500 dark:border-zinc-800">
-                No runnable sessions. Create one on the dashboard first.
+        {screen === "start" && (
+          <div className="mt-8">
+            {notice && (
+              <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
+                {notice}
               </p>
             )}
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => requestStartSession(session)}
-                disabled={busy}
-                className="w-full rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-sm hover:border-emerald-500/60 dark:border-zinc-800 dark:bg-zinc-900 disabled:opacity-50"
-              >
-                <p className="font-medium">{session.display_name}</p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {session.visibility} ·{" "}
-                  {session.status === "draft"
-                    ? session.countdown_seconds > 0
-                      ? `starts after ${session.countdown_seconds}s countdown`
-                      : "starts immediately"
-                    : `resume (${session.status})`}
-                </p>
-              </button>
-            ))}
-            {error && <p className="text-sm text-red-400">{error}</p>}
-            <button
-              onClick={loadSessions}
-              className="w-full py-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+            <h2 className="text-lg font-semibold">Start a run</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                requestQuickStart();
+              }}
+              className="mt-4 space-y-4"
             >
-              Refresh
-            </button>
+              <input
+                value={runName}
+                onChange={(e) => setRunName(e.target.value)}
+                placeholder={defaultRunName()}
+                maxLength={80}
+                aria-label="Run name"
+                className={inputCls}
+              />
+
+              <div>
+                <div className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-900">
+                  {(["public", "private"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setVisibility(option)}
+                      className={`rounded-lg py-2.5 text-sm font-medium capitalize transition-colors ${
+                        visibility === option
+                          ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
+                          : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                      }`}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">
+                  {visibility === "public"
+                    ? "Anyone can watch your run on the world map."
+                    : "Only people with the link and password can watch."}
+                </p>
+              </div>
+
+              {visibility === "private" && (
+                <input
+                  type="password"
+                  value={viewerPassword}
+                  onChange={(e) => setViewerPassword(e.target.value)}
+                  placeholder="Viewer password (min 4 chars)"
+                  required
+                  minLength={4}
+                  className={inputCls}
+                />
+              )}
+
+              <div>
+                <p className="text-xs uppercase tracking-widest text-zinc-500">
+                  Countdown
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {COUNTDOWN_CHOICES.map((choice) => (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      onClick={() => setCountdownSeconds(choice.value)}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                        countdownSeconds === choice.value
+                          ? "bg-emerald-500 text-black"
+                          : "bg-zinc-100 text-zinc-600 hover:text-zinc-900 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+                      }`}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Time to pocket your phone before tracking begins.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-xl bg-emerald-500 py-4 text-lg font-semibold text-black hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {busy ? "Starting…" : "Start run"}
+              </button>
+            </form>
+            {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+
+            {sessions.length > 0 && (
+              <>
+                <div className="my-6 flex items-center gap-3 text-center text-xs uppercase tracking-widest text-zinc-500">
+                  <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+                  or start a planned run
+                  <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+                </div>
+                <div className="space-y-2">
+                  {sessions.map((session) => (
+                    <button
+                      key={session.id}
+                      onClick={() => requestStartSession(session)}
+                      disabled={busy}
+                      className="w-full rounded-xl border border-zinc-200 bg-white p-3 text-left shadow-sm hover:border-emerald-500/60 dark:border-zinc-800 dark:bg-zinc-900 disabled:opacity-50"
+                    >
+                      <p className="font-medium">{session.display_name}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {session.visibility} ·{" "}
+                        {session.status === "draft"
+                          ? session.countdown_seconds > 0
+                            ? `starts after ${session.countdown_seconds}s countdown`
+                            : "starts immediately"
+                          : `resume (${session.status})`}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={loadSessions}
+                  className="mt-2 w-full py-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                >
+                  Refresh
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -615,24 +824,26 @@ export default function TrackerPage() {
             <button
               onClick={() => {
                 setFinished(null);
+                setRunName(defaultRunName());
                 loadSessions();
               }}
               className="mt-3 w-full py-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
             >
-              Run another session
+              Start another run
             </button>
           </div>
         )}
 
-        {disclosureSession && (
+        {disclosurePending && (
           <BackgroundDisclosure
             onAllow={() => {
-              const session = disclosureSession;
+              const pending = disclosurePending;
               markBgDisclosureAccepted();
-              setDisclosureSession(null);
-              startSession(session);
+              setDisclosurePending(null);
+              if (pending.kind === "quick") quickStart();
+              else startSession(pending.session);
             }}
-            onCancel={() => setDisclosureSession(null)}
+            onCancel={() => setDisclosurePending(null)}
           />
         )}
       </div>

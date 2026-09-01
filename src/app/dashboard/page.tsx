@@ -48,16 +48,19 @@ export default async function DashboardPage() {
           </h1>
           <ol className="mt-3 space-y-1 text-sm text-zinc-500 dark:text-zinc-400">
             <li>1. Connect the phone you&apos;ll run with (below).</li>
-            <li>2. Create a run session and choose public or private.</li>
             <li>
-              3. On that phone, open{" "}
+              2. On that phone, open{" "}
               <Link
                 href="/tracker"
                 className="font-medium text-emerald-600 underline underline-offset-2 dark:text-emerald-400"
               >
                 the tracker
               </Link>{" "}
-              and tap your session — GPS starts streaming to the map.
+              and hit Start run — GPS streams straight to the map.
+            </li>
+            <li>
+              3. Prefer to plan ahead? Create a run below and it starts later
+              with one tap.
             </li>
           </ol>
           <Link

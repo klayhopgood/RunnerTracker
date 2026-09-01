@@ -1,20 +1,6 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import bcrypt from "bcryptjs";
-import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/server";
-
-const createSchema = z
-  .object({
-    displayName: z.string().min(1).max(80),
-    visibility: z.enum(["public", "private"]),
-    viewerPassword: z.string().min(4).max(100).optional(),
-    countdownSeconds: z.number().int().min(0).max(3600).default(0),
-    autoStopMinutes: z.number().int().min(1).max(24 * 60).nullable().default(null),
-  })
-  .refine((v) => v.visibility === "public" || !!v.viewerPassword, {
-    message: "Private sessions need a viewer password",
-  });
+import { buildSessionInsert, createSessionSchema } from "@/lib/session-create";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -25,28 +11,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const parsed = createSchema.safeParse(await request.json().catch(() => null));
+  const parsed = createSessionSchema.safeParse(
+    await request.json().catch(() => null)
+  );
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid request" },
       { status: 400 }
     );
   }
-  const input = parsed.data;
 
   const { data: session, error } = await supabase
     .from("sessions")
-    .insert({
-      user_id: user.id,
-      slug: nanoid(12),
-      display_name: input.displayName,
-      visibility: input.visibility,
-      viewer_password_hash: input.viewerPassword
-        ? await bcrypt.hash(input.viewerPassword, 10)
-        : null,
-      countdown_seconds: input.countdownSeconds,
-      auto_stop_minutes: input.autoStopMinutes,
-    })
+    .insert(await buildSessionInsert(user.id, parsed.data))
     .select("id, slug, display_name, visibility, status, created_at")
     .single();
 

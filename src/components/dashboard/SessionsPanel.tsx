@@ -3,6 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatDistance, formatDuration } from "@/lib/format";
 import { useUnits } from "@/lib/units";
+import { defaultRunName } from "@/lib/run-name";
+
+const COUNTDOWN_CHOICES = [
+  { value: 0, label: "No countdown" },
+  { value: 10, label: "10s" },
+  { value: 30, label: "30s" },
+  { value: 60, label: "60s" },
+];
 
 type Session = {
   id: string;
@@ -32,7 +40,7 @@ export function SessionsPanel() {
   const [displayName, setDisplayName] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("public");
   const [viewerPassword, setViewerPassword] = useState("");
-  const [countdownSeconds, setCountdownSeconds] = useState(0);
+  const [countdownSeconds, setCountdownSeconds] = useState(10);
   const [autoStopMinutes, setAutoStopMinutes] = useState<number | "">("");
 
   const loadSessions = useCallback(async () => {
@@ -58,7 +66,7 @@ export function SessionsPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          displayName,
+          displayName: displayName.trim() || defaultRunName(),
           visibility,
           viewerPassword: visibility === "private" ? viewerPassword : undefined,
           countdownSeconds,
@@ -95,7 +103,7 @@ export function SessionsPanel() {
           onClick={() => setShowForm((v) => !v)}
           className="rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-medium text-black hover:bg-emerald-400"
         >
-          {showForm ? "Cancel" : "New session"}
+          {showForm ? "Cancel" : "Plan a run"}
         </button>
       </div>
 
@@ -104,20 +112,34 @@ export function SessionsPanel() {
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Run name, e.g. Sunday long run"
-            required
+            placeholder={defaultRunName()}
+            maxLength={80}
+            aria-label="Run name"
             className={inputCls}
           />
-          <select
-            value={visibility}
-            onChange={(e) =>
-              setVisibility(e.target.value as "public" | "private")
-            }
-            className={inputCls}
-          >
-            <option value="public">Public — on the world map</option>
-            <option value="private">Private — link + password</option>
-          </select>
+          <div>
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-900">
+              {(["public", "private"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setVisibility(option)}
+                  className={`rounded-md py-1.5 text-sm font-medium capitalize transition-colors ${
+                    visibility === option
+                      ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
+                      : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-zinc-500">
+              {visibility === "public"
+                ? "Anyone can watch on the world map."
+                : "Only people with the link and password can watch."}
+            </p>
+          </div>
           {visibility === "private" && (
             <input
               type="password"
@@ -129,50 +151,54 @@ export function SessionsPanel() {
               className={inputCls}
             />
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs text-zinc-500">
-              Countdown before start
-              <select
-                value={countdownSeconds}
-                onChange={(e) => setCountdownSeconds(Number(e.target.value))}
-                className={`${inputCls} mt-1`}
-              >
-                <option value={0}>None</option>
-                <option value={30}>30 seconds</option>
-                <option value={60}>1 minute</option>
-                <option value={300}>5 minutes</option>
-              </select>
-            </label>
-            <label className="text-xs text-zinc-500">
-              Auto-stop after
-              <select
-                value={autoStopMinutes}
-                onChange={(e) =>
-                  setAutoStopMinutes(
-                    e.target.value === "" ? "" : Number(e.target.value)
-                  )
-                }
-                className={`${inputCls} mt-1`}
-              >
-                <option value="">Never</option>
-                <option value={30}>30 minutes</option>
-                <option value={60}>1 hour</option>
-                <option value={120}>2 hours</option>
-                <option value={240}>4 hours</option>
-              </select>
-            </label>
+          <div>
+            <p className="text-xs text-zinc-500">Countdown before start</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {COUNTDOWN_CHOICES.map((choice) => (
+                <button
+                  key={choice.value}
+                  type="button"
+                  onClick={() => setCountdownSeconds(choice.value)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    countdownSeconds === choice.value
+                      ? "bg-emerald-500 text-black"
+                      : "bg-zinc-100 text-zinc-600 hover:text-zinc-900 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+                  }`}
+                >
+                  {choice.label}
+                </button>
+              ))}
+            </div>
           </div>
+          <label className="block text-xs text-zinc-500">
+            Auto-stop after
+            <select
+              value={autoStopMinutes}
+              onChange={(e) =>
+                setAutoStopMinutes(
+                  e.target.value === "" ? "" : Number(e.target.value)
+                )
+              }
+              className={`${inputCls} mt-1`}
+            >
+              <option value="">Never</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option>
+              <option value={120}>2 hours</option>
+              <option value={240}>4 hours</option>
+            </select>
+          </label>
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             type="submit"
             disabled={busy}
             className="w-full rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-black dark:hover:bg-zinc-200 disabled:opacity-50"
           >
-            Create session
+            Plan this run
           </button>
           <p className="text-xs text-zinc-500">
-            After creating it, hit “Start run” — it opens the tracker, which
-            uses this phone&apos;s GPS while you run.
+            “Start run” launches it in one tap — on this phone, or from the
+            tracker on your paired phone.
           </p>
         </form>
       )}
@@ -180,7 +206,8 @@ export function SessionsPanel() {
       <ul className="mt-4 space-y-2">
         {sessions.length === 0 && !showForm && (
           <li className="text-sm text-zinc-500">
-            No sessions yet — create one, then start it from your phone.
+            No runs yet — hit Start run on your phone&apos;s tracker, or plan
+            one here.
           </li>
         )}
         {sessions.map((session) => (
@@ -203,7 +230,7 @@ export function SessionsPanel() {
               </span>
               {session.status === "draft" && (
                 <a
-                  href="/tracker"
+                  href={`/tracker?session=${session.id}`}
                   className="rounded-lg bg-emerald-500 px-2.5 py-1 text-xs font-medium text-black hover:bg-emerald-400"
                 >
                   Start run

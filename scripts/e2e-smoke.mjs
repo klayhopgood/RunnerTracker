@@ -85,6 +85,61 @@ try {
   });
   check("pairing code is single-use", reuse.status === 400);
 
+  // 3b. Quick-start: the phone creates a session with its device token
+  // (tracker "Start run" button → POST /api/tracker/sessions).
+  const deviceJson = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${deviceToken}`,
+  };
+  const quick = await app("/api/tracker/sessions", {
+    method: "POST",
+    headers: deviceJson,
+    body: JSON.stringify({
+      displayName: "E2E Quick Start",
+      visibility: "private",
+      viewerPassword: "pass1234",
+      countdownSeconds: 10,
+    }),
+  });
+  check(
+    "phone creates session via device token",
+    quick.status === 200 &&
+      quick.body.session?.status === "draft" &&
+      quick.body.session?.countdown_seconds === 10 &&
+      quick.body.session?.visibility === "private",
+    JSON.stringify(quick.body.session ?? quick.body)
+  );
+
+  const quickNoPass = await app("/api/tracker/sessions", {
+    method: "POST",
+    headers: deviceJson,
+    body: JSON.stringify({ displayName: "No password", visibility: "private" }),
+  });
+  check("private session without password rejected", quickNoPass.status === 400);
+
+  const quickNoAuth = await app("/api/tracker/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ displayName: "x", visibility: "public" }),
+  });
+  check("session create without device token rejected", quickNoAuth.status === 401);
+
+  // Countdown path: start goes to "countdown", then stop so later steps can run.
+  const quickStart = await app(`/api/sessions/${quick.body.session.id}/start`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
+  check(
+    "quick-start session starts into countdown",
+    quickStart.status === 200 && quickStart.body.status === "countdown",
+    JSON.stringify(quickStart.body)
+  );
+  const quickStop = await app(`/api/sessions/${quick.body.session.id}/stop`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${deviceToken}` },
+  });
+  check("quick-start session stops", quickStop.status === 200);
+
   // 4. Session (created directly; dashboard uses the authed /api/sessions route)
   const [session] = await sb("/rest/v1/sessions", {
     method: "POST",
